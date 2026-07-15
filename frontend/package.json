@@ -1,0 +1,21 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun next dev",
+    "build": "bun next build",
+    "start": "bun next start",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "next": "^15",
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.6",
+    "@next/eslint-plugin-next": "^16.2.10",
+    "eslint": "^10.7.0"
+  }
+}
