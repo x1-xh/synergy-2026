@@ -1,52 +1,233 @@
-* {
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+*, *::before, *::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-body {
-  font-family: -apple-system, blinkmacsystemfont, "segoe ui", roboto, sans-serif;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  background: #fafafa;
-  color: #222;
+:root {
+  /* Exact OKLCH palette from reference specification */
+  --paper:         oklch(0.975 0.022 65);
+  --cream:         oklch(0.94 0.05 60);
+  --amber:         oklch(0.88 0.09 58);
+  --ink:           oklch(0.22 0.035 40);
+  --ink-soft:      oklch(0.35 0.035 40);
+  --rule:          oklch(0.74 0.18 50);
+  --hairline:      oklch(0.90 0.03 62);
+  --subtle:        oklch(0.55 0.04 55);
+
+  --primary:       oklch(0.68 0.19 45);
+  --primary-deep:  oklch(0.55 0.20 38);
+  --primary-soft:  oklch(0.82 0.13 55);
+  --primary-foreground: #FFFFFF;
+
+  --font-serif:    'Fraunces', ui-serif, Georgia, serif;
+  --font-sans:     'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono:     'JetBrains Mono', ui-monospace, monospace;
+
+  /* Existing base vars updated to exact OKLCH */
+  --bg-base:       oklch(0.975 0.022 65);
+  --bg-surface:    oklch(0.975 0.022 65);
+  --bg-panel:      oklch(0.94 0.05 60);
+  --bg-card:       oklch(0.975 0.022 65);
+  --bg-hover:      oklch(0.94 0.05 60);
+
+  --border:        oklch(0.90 0.03 62);
+  --border-bright: oklch(0.85 0.04 60);
+
+  --text-primary:  #1C1917;
+  --text-secondary:#3E3A36;
+  --text-dim:      #78716A;
+
+  --cyan:          #FF6B1A;
+  --cyan-dim:      #E55A0C;
+  --cyan-glow:     rgba(255, 107, 26, 0.2);
+
+  --green:         #10B981;
+  --green-dim:     #059669;
+  --green-glow:    rgba(16, 185, 129, 0.2);
+
+  --orange:        #FF6B1A;
+  --orange-dim:    #E55A0C;
+  --orange-glow:   rgba(255, 107, 26, 0.25);
+
+  --red:           #EF4444;
+  --red-dim:       #DC2626;
+  --red-glow:      rgba(239, 68, 68, 0.2);
+
+  --yellow:        #F59E0B;
+  --yellow-dim:    #D97706;
+
+  --purple:        #8B5CF6;
+  --purple-glow:   rgba(139, 92, 246, 0.2);
 }
 
-main {
-  text-align: center;
+html, body {
+  height: 100%;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-behavior: smooth;
 }
 
-h1 {
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin-bottom: 0.5rem;
+/* ── Scrollbars ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* ── Glassmorphism ──────────────────────────────────────────── */
+.glass {
+  background: rgba(15, 25, 50, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
 }
 
-p {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  justify-content: center;
-  font-size: 1.125rem;
+.glass-bright {
+  background: rgba(20, 35, 65, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-bright);
 }
 
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+/* ── Glow utilities ─────────────────────────────────────────── */
+.glow-cyan  { text-shadow: 0 0 20px var(--cyan), 0 0 40px var(--cyan-glow); }
+.glow-green { text-shadow: 0 0 20px var(--green), 0 0 40px var(--green-glow); }
+.glow-orange{ text-shadow: 0 0 20px var(--orange), 0 0 40px var(--orange-glow); }
+.glow-red   { text-shadow: 0 0 20px var(--red),  0 0 40px var(--red-glow); }
+
+/* ── Mono font ──────────────────────────────────────────────── */
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+/* ── Animated pulse dot ─────────────────────────────────────── */
+@keyframes pulse-ring {
+  0%   { transform: scale(1);   opacity: 1; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+.pulse-dot {
+  position: relative;
   display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+.pulse-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: inherit;
+  animation: pulse-ring 1.4s ease-out infinite;
 }
 
-.loading .dot {
-  background: #aaa;
+/* ── Fade-in for new items ─────────────────────────────────── */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeSlideIn 0.3s ease forwards; }
+
+/* ── Alert fly animation ────────────────────────────────────── */
+@keyframes flyRight {
+  0%   { opacity: 1; transform: translateX(0); }
+  60%  { opacity: 0.4; transform: translateX(60px); }
+  100% { opacity: 0; transform: translateX(120px); }
+}
+.fly-out { animation: flyRight 0.5s ease forwards; }
+
+/* ── Incident card pulse border ─────────────────────────────── */
+@keyframes borderPulse {
+  0%, 100% { border-color: var(--border); }
+  50%       { border-color: var(--cyan); }
+}
+.card-new { animation: borderPulse 1.2s ease 2; }
+
+/* ── Spinner ────────────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--cyan);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
 }
 
-.ok .dot {
-  background: #22863a;
+/* ── Number counter animate ─────────────────────────────────── */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.count-anim { animation: countUp 0.2s ease; }
+
+/* ── Editorial Motion & Utilities from styles.css ────────────── */
+@keyframes co-slide-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.error .dot {
-  background: #d73a49;
+@keyframes co-tick {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes co-pulse-border {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 26, 0.55); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 107, 26, 0); }
+}
+
+@keyframes co-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+@keyframes co-draw {
+  from { stroke-dashoffset: 400; }
+  to { stroke-dashoffset: 0; }
+}
+
+.co-slide {
+  animation: co-slide-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.co-tick {
+  animation: co-tick 2.4s ease-in-out infinite;
+}
+
+.co-pulse-dot {
+  animation: co-pulse-border 2.2s ease-out infinite;
+}
+
+.co-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.co-draw {
+  stroke-dasharray: 400;
+  animation: co-draw 2.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ── UNIVERSAL FAINTLY VISIBLE SCROLLBAR ─────────────────── */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(244, 239, 230, 0.4);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 107, 26, 0.35);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 107, 26, 0.6);
 }
