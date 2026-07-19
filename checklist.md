@@ -34,27 +34,27 @@
 - [.] Generate embeddings for all alert messages — Done (Created `demo_embeddings.npy` with shape `(15004, 384)`)
 
 ## Day 4
-- [ ] Add time-bucket feature (start with ~4 min windows)
-- [ ] Add severity/service as usable features
-- [ ] Test: pick 10 related alert pairs + 10 unrelated pairs, check similarity scores make sense
-- [ ] Fix text cleaning if similarity scores look wrong
+- [.] Add time-bucket feature (start with ~4 min windows)  [group alerts whose timestamps fall inside a sliding ~4-min window; store the window length as a constant so it can be tuned later] — done: cluster_alerts.py uses DEFAULT_WINDOW_SEC=240 with a sliding-window union-find
+- [~] Add severity/service as usable features  [severity goes into the root-cause ranking, not into cluster formation — clustering stays time+meaning only per the deck] — done: severity is a secondary root-cause signal; service-topology (upstream>downstream) still pending, no topology data yet
+- [ ] Test: pick 10 related alert pairs + 10 unrelated pairs, check similarity scores make sense  [print cosine(cleaned_i, cleaned_j) for each pair and eyeball that related > unrelated]
+- [ ] Fix text cleaning if similarity scores look wrong  [if related/unrelated pairs overlap, go back to clean_text.py and add/strips]
 
 ## Day 5
-- [ ] Build logic to connect alerts that are close in time AND similar in meaning
-- [ ] Restrict comparisons to nearby time windows only (for speed)
+- [.] Build logic to connect alerts that are close in time AND similar in meaning  [add a graph edge between i,j iff t[j]-t[i] <= window AND cosine(emb_i, emb_j) >= threshold] — done: cluster_alerts.py links alerts within the window whose cosine is ≥ the threshold
+- [.] Restrict comparisons to nearby time windows only (for speed)  [sort by timestamp and only compare each alert to later ones inside its window — no O(n^2)] — done: sliding right pointer, effectively linear
 - [ ] Start building the frontend layout using fake/sample data (raw stream + grouped view)
 
 ## Day 6
-- [ ] Extract groups of connected alerts (these are your incident clusters)
-- [ ] Run full pipeline end-to-end on real data
+- [.] Extract groups of connected alerts (these are your incident clusters)  [run connected components over the similarity graph; each component is one incident] — done: connected components via union-find in cluster_alerts.py
+- [ ] Run full pipeline end-to-end on real data  [run parse_logs.py -> extract_alerts.py -> clean_text.py -> embed_alerts.py -> cluster_alerts.py on the real logs] — blocked: raw HDFS/Spark logs + generated artifacts are not on disk; ran on synthetic data only
 - [ ] Milestone check: confirm you get a real result like "1400 alerts → 40 groups"
 - [ ] If this isn't working yet, stop and fix it before moving forward
 
 ## Day 7
-- [ ] Within each group, rank alerts by likely root cause (earliest alert = strongest signal)
-- [ ] Add a secondary signal if possible (upstream service > downstream service)
-- [ ] Output top 3 root cause candidates with confidence, not just one answer
-- [ ] Flag low-confidence groups as "needs review"
+- [.] Within each group, rank alerts by likely root cause (earliest alert = strongest signal)  [score each member by earliness, then break ties with severity/cohesion; highest score = root cause] — done: rank_cluster uses earliness as the primary signal
+- [~] Add a secondary signal if possible (upstream service > downstream service)  [if service topology exists, boost alerts whose service is upstream of the others] — partial: severity added as a secondary signal; upstream/downstream topology still pending, no topology data yet
+- [.] Output top 3 root cause candidates with confidence, not just one answer  [keep the top-3 scored members and normalize their scores into per-incident confidences] — done: root_cause_candidates holds top 3 with normalized confidences
+- [.] Flag low-confidence groups as "needs review"  [set status to needs_review when confidence < floor or cluster too small] — done: status field set by CONF_FLOOR and MIN_CLUSTER_SIZE
 
 ## Day 8
 - [ ] Write the LLM prompt — one call per group, not per alert
