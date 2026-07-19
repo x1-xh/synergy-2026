@@ -1813,3 +1813,51 @@
   opacity: 1;
   transform: translateY(0);
 }
+
+/* ── FILE UPLOAD COMPONENT ─────────────────────── */
+.uploadWrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+}
+
+.uploadInput {
+  display: none;
+}
+
+.uploadLabel {
+  background: var(--primary);
+  color: var(--background);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.uploadLabel:hover {
+  background: transparent;
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.uploadLoading {
+  background: var(--card-border);
+  color: var(--subtle);
+  cursor: not-allowed;
+  pointer-events: none;
+  animation: pulseBg 1.5s infinite;
+}
+
+@keyframes pulseBg {
+  0% { background: var(--card-border); }
+  50% { background: var(--hover-subtle); }
+  100% { background: var(--card-border); }
+}

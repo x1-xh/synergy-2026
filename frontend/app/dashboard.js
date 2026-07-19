@@ -6,7 +6,7 @@ import styles from "./dashboard.module.css"
 
 const BASE_INTERVAL_MS = 600
 
-const kpis = [
+const initialKpis = [
   { label: "Noise Reduction", value: "98.4", suffix: "%", delta: "+2.1", trend: [30, 34, 40, 38, 46, 52, 58, 62, 68, 74, 82, 88, 94, 98], tone: "primary" },
   { label: "Raw Alerts", value: "14,292", delta: "+842 / hr", trend: [60, 62, 58, 65, 70, 68, 74, 80, 77, 82, 88, 92, 96, 100] },
   { label: "Correlated", value: "04", delta: "2 escalated", trend: [10, 12, 14, 16, 20, 22, 26, 30, 34, 36, 40, 44, 48, 52] },
@@ -287,12 +287,51 @@ function TopologyMap({ nodes = [], edges = [] }) {
 export default function DashboardPage() {
   const [stream, setStream]             = useState(initialStream)
   const [incidents, setIncidents]       = useState(INCIDENTS)
+  const [kpiData, setKpiData]           = useState(initialKpis)
   const [focusIdx, setFocusIdx]         = useState(0)
   const [activeTab, setActiveTab]       = useState("LIVE")
   const [isPlaying, setIsPlaying]       = useState(false)
   const [speed, setSpeed]               = useState(1)
   const [ackedIds, setAckedIds]         = useState([])
   const [runbookModalInc, setRunbookModalInc] = useState(null)
+  const [isUploading, setIsUploading]   = useState(false)
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("http://localhost:8000/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      
+      if (data.status === "success" && data.incidents) {
+        setIncidents(data.incidents);
+        setFocusIdx(0);
+        
+        // Update KPIs
+        setKpiData(prev => {
+          const newKpis = [...prev];
+          const reduction = (100 - (data.clusters_count / data.total_alerts * 100)).toFixed(1);
+          newKpis[0] = { ...newKpis[0], value: reduction };
+          newKpis[1] = { ...newKpis[1], value: data.total_alerts.toLocaleString(), delta: "" };
+          newKpis[2] = { ...newKpis[2], value: data.clusters_count < 10 ? `0${data.clusters_count}` : data.clusters_count, delta: "Live Data" };
+          return newKpis;
+        });
+      }
+    } catch (err) {
+      console.error("Upload failed", err);
+    } finally {
+      setIsUploading(false);
+      e.target.value = null; // Reset input so same file can be uploaded again
+    }
+  };
 
   const timerRef = useRef(null)
 
@@ -550,6 +589,12 @@ export default function DashboardPage() {
               <div className={styles.regionVal}>US-EAST-1 · EU-WEST-1</div>
             </div>
             <div className={styles.headerDivider} />
+            <div className={styles.uploadWrapper}>
+              <input type="file" id="logUpload" className={styles.uploadInput} accept=".log,.csv,.json,.txt" onChange={handleFileUpload} disabled={isUploading} />
+              <label htmlFor="logUpload" className={`${styles.uploadLabel} ${isUploading ? styles.uploadLoading : ""}`}>
+                {isUploading ? "Processing AI Embeddings..." : "↑ Upload Logs"}
+              </label>
+            </div>
             <button
               onClick={() => setRunbookModalInc(activeFocusInc)}
               className={styles.openRunbookBtn}
@@ -560,7 +605,7 @@ export default function DashboardPage() {
         </div>
 
         <div className={styles.kpiGrid}>
-          {kpis.map((k, i) => {
+          {kpiData.map((k, i) => {
             const featured = k.tone === "primary"
             return (
               <div
