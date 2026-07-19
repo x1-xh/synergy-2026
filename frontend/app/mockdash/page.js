@@ -1,10 +1,39 @@
 "use client"
 import { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
-import { pingBackend, fetchIncidents, fetchIncidentDetail, fetchMetrics, fetchStreamBatch } from "../lib/api"
-import styles from "./dashboard.module.css"
+import { INITIAL_ALERTS, INCIDENTS, generateStreamAlert } from "../../lib/mockData"
+import styles from "../dashboard.module.css"
 
 const BASE_INTERVAL_MS = 600
+
+const initialKpis = [
+  { label: "Noise Reduction", value: "98.4", suffix: "%", delta: "+2.1", trend: [30, 34, 40, 38, 46, 52, 58, 62, 68, 74, 82, 88, 94, 98], tone: "primary" },
+  { label: "Raw Alerts", value: "14,292", delta: "+842 / hr", trend: [60, 62, 58, 65, 70, 68, 74, 80, 77, 82, 88, 92, 96, 100] },
+  { label: "Correlated", value: "04", delta: "2 escalated", trend: [10, 12, 14, 16, 20, 22, 26, 30, 34, 36, 40, 44, 48, 52] },
+  { label: "Suppressed", value: "14,018", delta: "98.4% of stream", trend: [40, 48, 55, 60, 66, 70, 74, 78, 82, 86, 90, 94, 97, 100] },
+  { label: "Precision", value: "99.1", suffix: "%", delta: "+0.4 wk", trend: [80, 82, 85, 84, 87, 89, 90, 92, 94, 95, 96, 97, 98, 99], tone: "primary" },
+]
+
+const initialStream = [
+  { time: "14:20:01.002", sev: "FATAL", src: "hdfs.NameNode", msg: "OutOfMemoryError in Java heap space during createBlock", focus: false },
+  { time: "14:20:00.891", sev: "WARN",  src: "zookeeper.Client", msg: "Session 0x12a9b3 timed out — awaiting reconnect", focus: false },
+  { time: "14:19:59.774", sev: "INFO",  src: "spark.Driver", msg: "Task 142.0 stage 12.0 (TID 2441) finished 142 ms · 10.0.4.16", focus: false },
+  { time: "14:19:58.442", sev: "ERROR", src: "hdfs.DataNode", msg: "Block report failed — connection refused /10.0.1.42:50010", focus: true },
+  { time: "14:19:57.331", sev: "WARN",  src: "spark.Executor", msg: "Memory usage 88.2% on executor-id 14 — triggering GC", focus: false },
+  { time: "14:19:56.009", sev: "INFO",  src: "yarn.ResourceMgr", msg: "Allocating container_1623819_0012 for user: analytics", focus: false },
+  { time: "14:19:54.992", sev: "INFO",  src: "hdfs.Client", msg: "Closed output stream for file /user/log/temp_01", focus: false },
+  { time: "14:19:53.221", sev: "INFO",  src: "spark.Shuffle", msg: "Shuffle map stage 11.0 completed in 1.42 s · 32 tasks", focus: false },
+  { time: "14:19:52.108", sev: "WARN",  src: "hdfs.FSNamesystem", msg: "Slow BlockReceiver — 1180 ms to write block BP-2091", focus: false },
+  { time: "14:19:50.887", sev: "ERROR", src: "hdfs.DataNode", msg: "IOException: connection reset by peer reading blk_1073", focus: false },
+  { time: "14:19:49.441", sev: "INFO",  src: "zookeeper.Server", msg: "Session 0x12ab04 established · timeout 30000", focus: false },
+  { time: "14:19:48.002", sev: "INFO",  src: "spark.TaskSet", msg: "Starting task 15.0 stage 12.0 (TID 2443) · 10.0.4.17", focus: false },
+]
+
+const fallbackSecondaryIncidents = [
+  { id: "INC-8819", title: "Spark Driver OutOfMemory Pattern", confidence: 72, alerts: 89, age: "4m", host: "spark-drv-07" },
+  { id: "INC-8815", title: "ZooKeeper Quorum Timeout", confidence: 68, alerts: 34, age: "12m", host: "zk-quorum-02" },
+  { id: "INC-8811", title: "Disk I/O Saturation · /data/vol3", confidence: 45, alerts: 12, age: "22m", host: "node-091" },
+]
 
 /* ---------- Small visual primitives ---------- */
 
@@ -43,7 +72,7 @@ function SeverityToken({ sev }) {
   return <span className={`${styles.sevPill} ${styles.sevPillInfo}`}>● INFO</span>
 }
 
-function ConfidenceRing({ value = 0, size = 64 }) {
+function ConfidenceRing({ value = 94, size = 64 }) {
   const r = size / 2 - 4
   const c = 2 * Math.PI * r
   const offset = c - (value / 100) * c
@@ -76,7 +105,7 @@ function getTopologyInfo(activeFocusInc, latestStreamSrc) {
   const tags = (activeFocusInc?.tags || []).map(t => typeof t === "string" ? t.toLowerCase() : "")
   const isSpark = title.includes("spark") || tags.includes("spark") || tags.includes("oom")
   const isZk = title.includes("zookeeper") || title.includes("quorum") || tags.includes("zookeeper")
-  const isDisk = title.includes("disk") || title.includes("vol") || tags.includes("disk_io")
+  const isDisk = title.includes("disk") || title.includes("vol3") || tags.includes("disk_io")
   const isNameNode = title.includes("namenode") || title.includes("metadata")
 
   let rack = "Rack-B"
@@ -118,7 +147,11 @@ function getTopologyInfo(activeFocusInc, latestStreamSrc) {
     rack = "Rack-A"
     affectedText = "5 nodes affected"
     highlightText = "1 root · 3 downstream"
-    metrics = { nodes: { count: "5", total: "128" }, replicas: { count: "12", status: "unsafe" }, jobs: { count: "8", status: "stalled" } }
+    metrics = {
+      nodes: { count: "5", total: "128" },
+      replicas: { count: "12", status: "unsafe" },
+      jobs: { count: "8", status: "stalled" }
+    }
     affectedPath = [
       { node: "spark-drv-07", role: "ROOT", impact: "—", tone: "root" },
       { node: "node-043", role: "DOWNSTREAM", impact: "+410ms", tone: "root" },
@@ -128,7 +161,11 @@ function getTopologyInfo(activeFocusInc, latestStreamSrc) {
     rack = "Rack-C"
     affectedText = "6 nodes affected"
     highlightText = "2 root · 2 downstream"
-    metrics = { nodes: { count: "6", total: "128" }, replicas: { count: "24", status: "unsafe" }, jobs: { count: "2", status: "stalled" } }
+    metrics = {
+      nodes: { count: "6", total: "128" },
+      replicas: { count: "24", status: "unsafe" },
+      jobs: { count: "2", status: "stalled" }
+    }
     affectedPath = [
       { node: "zk-quorum-02", role: "ROOT", impact: "—", tone: "root" },
       { node: "node-091", role: "DOWNSTREAM", impact: "+520ms", tone: "root" },
@@ -138,7 +175,11 @@ function getTopologyInfo(activeFocusInc, latestStreamSrc) {
     rack = "Rack-D"
     affectedText = "4 nodes affected"
     highlightText = "1 root · 1 downstream"
-    metrics = { nodes: { count: "4", total: "128" }, replicas: { count: "8", status: "unsafe" }, jobs: { count: "1", status: "stalled" } }
+    metrics = {
+      nodes: { count: "4", total: "128" },
+      replicas: { count: "8", status: "unsafe" },
+      jobs: { count: "1", status: "stalled" }
+    }
     affectedPath = [
       { node: "node-091", role: "ROOT", impact: "—", tone: "root" },
       { node: "zk-quorum", role: "DOWNSTREAM", impact: "+290ms", tone: "degraded" }
@@ -147,7 +188,11 @@ function getTopologyInfo(activeFocusInc, latestStreamSrc) {
     rack = "Rack-NN"
     affectedText = "6 nodes affected"
     highlightText = "1 root · 4 downstream"
-    metrics = { nodes: { count: "6", total: "128" }, replicas: { count: "32", status: "unsafe" }, jobs: { count: "5", status: "stalled" } }
+    metrics = {
+      nodes: { count: "6", total: "128" },
+      replicas: { count: "32", status: "unsafe" },
+      jobs: { count: "5", status: "stalled" }
+    }
     affectedPath = [
       { node: "nn-primary", role: "ROOT", impact: "—", tone: "root" },
       { node: "node-042", role: "DOWNSTREAM", impact: "+480ms", tone: "root" },
@@ -185,10 +230,17 @@ function TopologyMap({ nodes = [], edges = [] }) {
         const p1 = pos(a)
         const p2 = pos(b)
         return (
-          <line key={i} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+          <line
+            key={i}
+            x1={p1.x}
+            y1={p1.y}
+            x2={p2.x}
+            y2={p2.y}
             stroke={hot ? "oklch(0.68 0.19 45)" : "oklch(0.55 0.14 45 / 0.35)"}
-            strokeWidth={hot ? 0.9 : 0.45} strokeDasharray={hot ? "1.5 1" : "0"}
-            className={hot ? "co-draw" : ""} />
+            strokeWidth={hot ? 0.9 : 0.45}
+            strokeDasharray={hot ? "1.5 1" : "0"}
+            className={hot ? "co-draw" : ""}
+          />
         )
       })}
       {nodes.map((n) => {
@@ -197,12 +249,26 @@ function TopologyMap({ nodes = [], edges = [] }) {
         return (
           <g key={n.id}>
             {n.alert && <circle cx={n.x} cy={n.y} r="8.5" fill="url(#halo)" />}
-            <circle cx={n.x} cy={n.y} r={n.ring ? 3.6 : 2.8}
+            <circle
+              cx={n.x}
+              cy={n.y}
+              r={n.ring ? 3.6 : 2.8}
               fill={n.alert ? "oklch(0.68 0.19 45)" : n.warn ? "oklch(0.88 0.09 58)" : "oklch(0.22 0.035 40)"}
-              stroke="oklch(0.975 0.022 65)" strokeWidth="0.8" />
-            <text x={n.x} y={labelY} fontSize="4.8" fontWeight="700" textAnchor="middle" fill="#FFFFFF"
-              stroke="oklch(0.16 0.03 40)" strokeWidth="1.5" paintOrder="stroke fill"
-              style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.03em" }}>
+              stroke="oklch(0.975 0.022 65)"
+              strokeWidth="0.8"
+            />
+            <text
+              x={n.x}
+              y={labelY}
+              fontSize="4.8"
+              fontWeight="700"
+              textAnchor="middle"
+              fill="#FFFFFF"
+              stroke="oklch(0.16 0.03 40)"
+              strokeWidth="1.5"
+              paintOrder="stroke fill"
+              style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.03em" }}
+            >
               {n.label}
             </text>
           </g>
@@ -212,130 +278,89 @@ function TopologyMap({ nodes = [], edges = [] }) {
   )
 }
 
-/* ---------- Helpers for API data normalization ---------- */
+/* ---------- Mock Dashboard Page ---------- */
 
-function alertToRow(a) {
-  return {
-    time: (a.timestamp || "").slice(11, 19),
-    sev: a.severity || "WARN",
-    src: a.service || "unknown",
-    msg: (a.message || "").slice(0, 120),
-    focus: a.severity === "FATAL" || a.severity === "ERROR",
-  }
-}
-
-function confidencePct(inc) {
-  const raw = inc.confidence ?? inc.confidence_score ?? 0
-  return Math.round(raw <= 1 ? raw * 100 : raw)
-}
-
-/* ---------- Live Dashboard Page ---------- */
-
-export default function DashboardPage() {
-  const [stream, setStream]       = useState([])
-  const [incidents, setIncidents] = useState([])
-  const [kpiData, setKpiData]     = useState([])
-  const [focusIdx, setFocusIdx]   = useState(0)
-  const [activeTab, setActiveTab] = useState("LIVE")
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [speed, setSpeed]         = useState(1)
-  const [ackedIds, setAckedIds]   = useState([])
+export default function MockDashboardPage() {
+  const [stream, setStream]             = useState(initialStream)
+  const [incidents, setIncidents]       = useState(INCIDENTS)
+  const [kpiData, setKpiData]           = useState(initialKpis)
+  const [focusIdx, setFocusIdx]         = useState(0)
+  const [activeTab, setActiveTab]       = useState("LIVE")
+  const [isPlaying, setIsPlaying]       = useState(false)
+  const [speed, setSpeed]               = useState(1)
+  const [ackedIds, setAckedIds]         = useState([])
   const [runbookModalInc, setRunbookModalInc] = useState(null)
-  const [isOffline, setIsOffline] = useState(true)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isUploading, setIsUploading]   = useState(false)
   const timerRef = useRef(null)
 
-  // Replay buffer fed from /api/stream
-  const streamCursor = useRef(0)
-  const alertBuffer = useRef([])
-  const refilling = useRef(false)
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const refillBuffer = useCallback(() => {
-    if (refilling.current) return
-    refilling.current = true
-    fetchStreamBatch(streamCursor.current, 120)
-      .then((b) => {
-        alertBuffer.current.push(...(b.alerts || []))
-        streamCursor.current = b.next_cursor ?? 0
-      })
-      .catch(() => {})
-      .finally(() => { refilling.current = false })
-  }, [])
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
 
-  // On mount: load real AIOps data or show offline state
-  useEffect(() => {
-    let cancelled = false
-    async function loadLiveData() {
-      if (!(await pingBackend())) {
-        if (!cancelled) { setIsLoading(false); setIsOffline(true) }
-        return
+    try {
+      const res = await fetch("http://localhost:8000/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (data.status === "success" && data.incidents) {
+        setIncidents(data.incidents);
+        setFocusIdx(0);
+        setKpiData(prev => {
+          const newKpis = [...prev];
+          const reduction = (100 - (data.clusters_count / data.total_alerts * 100)).toFixed(1);
+          newKpis[0] = { ...newKpis[0], value: reduction };
+          newKpis[1] = { ...newKpis[1], value: data.total_alerts.toLocaleString(), delta: "" };
+          newKpis[2] = { ...newKpis[2], value: data.clusters_count < 10 ? `0${data.clusters_count}` : data.clusters_count, delta: "Live Data" };
+          return newKpis;
+        });
       }
-      try {
-        const [incs, mets, batch] = await Promise.all([
-          fetchIncidents(), fetchMetrics(), fetchStreamBatch(0, 120),
-        ])
-        if (cancelled) return
-        if (!incs.length) { setIsLoading(false); return }
-
-        setIncidents(incs)
-        setFocusIdx(0)
-        setKpiData(buildKpis(mets?.pipeline, mets?.evaluation))
-        streamCursor.current = batch.next_cursor ?? 0
-        alertBuffer.current = batch.alerts || []
-        setStream((batch.alerts || []).slice(-12).reverse().map(alertToRow))
-        setIsOffline(false)
-      } catch (err) {
-        console.error("live data load failed", err)
-      } finally {
-        if (!cancelled) setIsLoading(false)
-      }
+    } catch (err) {
+      console.error("Upload failed", err);
+    } finally {
+      setIsUploading(false);
+      e.target.value = null;
     }
-    loadLiveData()
-    return () => { cancelled = true }
-  }, [])
+  };
 
-  function buildKpis(p, eval_) {
-    if (!p) return []
-    const svcDet = eval_?.detection_rate_service_matched
-    return [
-      { label: "Noise Reduction", value: String(p.noise_reduction ?? "—"), suffix: "%", tone: "primary",
-        trend: [30, 34, 40, 38, 46, 52, 58, 62, 68, 74, 82, 88, 94, 98] },
-      { label: "Raw Alerts", value: (p.total_alerts ?? 0).toLocaleString(), delta: "AIOps 2022",
-        trend: [60, 62, 58, 65, 70, 68, 74, 80, 77, 82, 88, 92, 96, 100] },
-      { label: "Correlated", value: String(p.total_incidents ?? 0), delta: "from pipeline",
-        trend: [10, 12, 14, 16, 20, 22, 26, 30, 34, 36, 40, 44, 48, 52] },
-      { label: "Suppressed", value: (p.suppressed ?? 0).toLocaleString(), delta: `${p.noise_reduction ?? 0}% of stream`,
-        trend: [40, 48, 55, 60, 66, 70, 74, 78, 82, 86, 90, 94, 97, 100] },
-      ...(svcDet != null ? [{
-        label: "Detection·svc", value: String(svcDet), suffix: "%", delta: "svc-matched",
-        trend: [80, 82, 85, 84, 87, 89, 90, 92, 94, 95, 96, 97, 98, 99], tone: "primary"
-      }] : []),
+  // Computed display items
+  const rawFocus = incidents[focusIdx] || incidents[0] || {}
+  const activeFocusInc = {
+    incident_id: rawFocus.incident_id || "INC-8821",
+    title: rawFocus.title || "HDFS DataNode connection refusal cluster",
+    confidence_score: Math.round((rawFocus.confidence ? rawFocus.confidence * (rawFocus.confidence <= 1 ? 100 : 1) : rawFocus.confidence_score) || 94),
+    suppressed_count: rawFocus.suppressed_count || 412,
+    detection_time: rawFocus.detection_time || "1.2s",
+    mttr_estimate: rawFocus.mttr_estimate || "8m",
+    summary: rawFocus.summary || rawFocus.explanation || "Cascading failure originating from node-042.rack-b after a primary NIC timeout. Correlation collapsed 412 alerts into a single root cause.",
+    tags: rawFocus.tags || ["NIC_TIMEOUT", "HDFS", "Rack-B", "P1"],
+    timeline: rawFocus.timeline || [
+      { t: "14:20:01", d: "FATAL · NameNode heap exhausted", now: true },
+      { t: "14:19:58", d: "Block report failed on /10.0.1.42" },
+      { t: "14:19:52", d: "Slow BlockReceiver 1180ms" },
+      { t: "14:18:47", d: "NIC timeout on node-042" },
     ]
   }
 
-  // Fetch full incident detail when focus changes (only for the timeline)
-  const focusId = incidents[focusIdx]?.incident_id
-  useEffect(() => {
-    if (!focusId) return
-    const inc = incidents.find((i) => i.incident_id === focusId)
-    if (!inc || inc.timeline) return
-    let cancelled = false
-    fetchIncidentDetail(focusId)
-      .then((det) => {
-        if (cancelled || !det) return
-        const timeline = (det.member_alerts || []).slice(0, 8).map((a, i) => ({
-          t: (a.timestamp || "").slice(11, 19),
-          d: `${a.severity} · ${(a.message || "").slice(0, 90)}`,
-          now: i === 0,
-        }))
-        setIncidents((prev) => prev.map((p) =>
-          p.incident_id === focusId ? { ...p, timeline, summary: det.explanation } : p))
-      })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [focusId])
+  const topologyInfo = getTopologyInfo(activeFocusInc, isPlaying ? stream[0]?.src : null)
 
-  // Replay timer
+  const queueIncidents = incidents.slice(1).length > 0
+    ? incidents.slice(1).map((inc, idx) => ({
+        id: inc.incident_id || `INC-881${9 - idx * 4}`,
+        title: inc.title || "Infrastructure anomaly detected",
+        confidence: Math.round((inc.confidence ? inc.confidence * (inc.confidence <= 1 ? 100 : 1) : inc.confidence_score) || 72),
+        alerts: inc.suppressed_count || 34,
+        age: `${(idx + 1) * 3}m`,
+        host: inc.host || "node-042",
+        rawIdx: idx + 1
+      }))
+    : fallbackSecondaryIncidents.map((f, idx) => ({ ...f, rawIdx: idx + 1 }))
+
   const stopReplay = useCallback(() => {
     clearInterval(timerRef.current)
   }, [])
@@ -344,13 +369,85 @@ export default function DashboardPage() {
     stopReplay()
     const interval = Math.floor(BASE_INTERVAL_MS / spd)
     timerRef.current = setInterval(() => {
-      const gen = alertBuffer.current.shift()
-      if (!gen) { refillBuffer(); return }
-      if (alertBuffer.current.length < 20) refillBuffer()
+      const gen = generateStreamAlert()
+      const newTime = new Date().toISOString().slice(11, 19)
+      const newSev = gen.severity || "WARN"
+      const newSrc = gen.service || "hdfs.DataNode"
+      const newMsg = gen.message || "Signal check anomaly"
 
-      setStream((prev) => [alertToRow(gen), ...prev.slice(0, 50)])
+      setStream((prev) => {
+        const newRow = {
+          time: newTime,
+          sev: newSev,
+          src: newSrc,
+          msg: newMsg,
+          focus: Math.random() < 0.2
+        }
+        return [newRow, ...prev.slice(0, 50)]
+      })
+
+      // Dynamic updates to incidents & clusters
+      setIncidents((prev) => {
+        const updated = [...prev]
+        if (updated.length > 0) {
+          const top = { ...updated[0] }
+          top.suppressed_count = (top.suppressed_count || 412) + Math.floor(Math.random() * 3) + 1
+
+          const currentTimeline = top.timeline || [
+            { t: "14:20:01", d: "FATAL · NameNode heap exhausted", now: true },
+            { t: "14:19:58", d: "Block report failed on /10.0.1.42" },
+            { t: "14:19:52", d: "Slow BlockReceiver 1180ms" },
+            { t: "14:18:47", d: "NIC timeout on node-042" },
+          ]
+          const newEvent = {
+            t: newTime,
+            d: `${newSev} · Correlated [${newSrc}]`,
+            now: true
+          }
+          top.timeline = [newEvent, ...currentTimeline.map(e => ({ ...e, now: false })).slice(0, 5)]
+          updated[0] = top
+        }
+
+        if (Math.random() < 0.24) {
+          const clusterTitles = [
+            "Spark Driver OutOfMemory Pattern",
+            "ZooKeeper Quorum Timeout Cluster",
+            "Disk I/O Saturation · /data/vol3",
+            "DataNode Network Flap · Rack-C",
+            "YARN Resource Manager Fencing"
+          ]
+          const clusterHosts = ["spark-drv-07", "zk-quorum-02", "node-091", "node-044", "yarn-rm-01"]
+          const clusterTags = [
+            ["SPARK", "OOM", "DRIVER", "P1"],
+            ["ZOOKEEPER", "QUORUM", "TIMEOUT", "P1"],
+            ["DISK_IO", "STORAGE", "VOL3", "P2"],
+            ["NIC_FLAP", "HDFS", "RACK-C", "P1"],
+            ["YARN", "RESOURCE_MGR", "FENCING", "P2"]
+          ]
+          const pick = Math.floor(Math.random() * clusterTitles.length)
+          const newCluster = {
+            incident_id: `INC-88${Math.floor(Math.random() * 80) + 20}`,
+            title: clusterTitles[pick],
+            confidence: 0.86 + Math.random() * 0.13,
+            host: clusterHosts[pick],
+            suppressed_count: Math.floor(Math.random() * 60) + 12,
+            explanation: `Autonomous graph clustering correlated multiple cascading ${newSev} anomalies on ${clusterHosts[pick]} into a unified root cause.`,
+            tags: clusterTags[pick],
+            detection_time: `${(Math.random() * 2 + 0.4).toFixed(1)}s`,
+            mttr_estimate: `${Math.floor(Math.random() * 10) + 3}m`,
+            timeline: [
+              { t: newTime, d: `${newSev} · ${newMsg}`, now: true },
+              { t: "14:19:55", d: `Initial anomaly detected on ${clusterHosts[pick]}` },
+              { t: "14:19:40", d: "Vector embeddings established semantic link" }
+            ]
+          }
+          return [newCluster, ...updated.slice(0, 6)]
+        }
+
+        return updated
+      })
     }, interval)
-  }, [stopReplay, refillBuffer])
+  }, [stopReplay])
 
   const handleSpeedChange = (newSpd) => {
     setSpeed(newSpd)
@@ -358,18 +455,27 @@ export default function DashboardPage() {
   }
 
   const togglePlay = () => {
-    if (isPlaying) { stopReplay(); setIsPlaying(false) }
-    else { setIsPlaying(true); startReplay(speed) }
+    if (isPlaying) {
+      stopReplay()
+      setIsPlaying(false)
+    } else {
+      setIsPlaying(true)
+      startReplay(speed)
+    }
   }
 
-  useEffect(() => () => stopReplay(), [stopReplay])
+  useEffect(() => {
+    return () => stopReplay()
+  }, [stopReplay])
 
-  // Scroll reveal
+  // Smooth scroll reveal observer
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting) entry.target.classList.add(styles.revealVisible)
+          if (entry.isIntersecting) {
+            entry.target.classList.add(styles.revealVisible)
+          }
         })
       },
       { threshold: 0.08, rootMargin: "0px 0px -20px 0px" }
@@ -378,112 +484,6 @@ export default function DashboardPage() {
     elements.forEach((el) => observer.observe(el))
     return () => observer.disconnect()
   }, [incidents, stream, activeTab])
-
-  const rawFocus = incidents[focusIdx] || incidents[0] || {}
-  const activeFocusInc = rawFocus.incident_id ? {
-    incident_id: rawFocus.incident_id,
-    title: rawFocus.title || "Incident",
-    confidence_score: confidencePct(rawFocus),
-    suppressed_count: rawFocus.suppressed_count ?? rawFocus.member_count ?? 0,
-    detection_time: rawFocus.detection_time || "—",
-    mttr_estimate: rawFocus.mttr_estimate || "—",
-    summary: rawFocus.summary || rawFocus.explanation || "",
-    tags: rawFocus.tags || [],
-    timeline: rawFocus.timeline || [],
-  } : null
-
-  const topologyInfo = getTopologyInfo(activeFocusInc || {}, isPlaying ? stream[0]?.src : null)
-
-  const queueIncidents = incidents.length > 1
-    ? incidents.slice(1).map((inc, idx) => ({
-        id: inc.incident_id || `inc_${idx + 1}`,
-        title: inc.title || "Incident",
-        confidence: confidencePct(inc),
-        alerts: inc.suppressed_count ?? inc.member_count ?? 0,
-        age: `${(idx + 1) * 3}m`,
-        host: (inc.root_cause_alert?.service || inc.tags?.[0] || "unknown").replace(/-\d+$/, ''),
-        rawIdx: idx + 1,
-      }))
-    : []
-
-  /* ---------- Offline fallback UI ---------- */
-
-  if (isLoading) {
-    return (
-      <div className={styles.root}>
-        <header className={styles.header}>
-          <div className={styles.headerInner}>
-            <div className={styles.headerLeft}>
-              <Link href="/" className={styles.logo}>
-                <span className={styles.logoMark}>⬡</span>
-                CLARITY<span className={styles.logoLight}>OPS</span>
-              </Link>
-            </div>
-          </div>
-        </header>
-        <div style={{ display: "grid", placeItems: "center", height: "80vh", color: "var(--subtle)" }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: "40px", marginBottom: "16px", opacity: 0.5 }}>⬡</div>
-            <div style={{ fontSize: "18px", fontFamily: "var(--font-mono)" }}>Connecting to AIOps backend...</div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (isOffline) {
-    return (
-      <div className={styles.root}>
-        <header className={styles.header}>
-          <div className={styles.headerInner}>
-            <div className={styles.headerLeft}>
-              <Link href="/" className={styles.logo}>
-                <span className={styles.logoMark}>⬡</span>
-                CLARITY<span className={styles.logoLight}>OPS</span>
-              </Link>
-              <nav className={styles.nav}>
-                <Link href="/mockdash" className={styles.navLink}>Mock Dashboard →</Link>
-              </nav>
-            </div>
-            <div className={styles.headerRight}>
-              <span className={styles.dataBadge}>● Offline</span>
-            </div>
-          </div>
-        </header>
-        <div style={{ display: "grid", placeItems: "center", height: "80vh", padding: "0 24px" }}>
-          <div style={{ textAlign: "center", maxWidth: "480px" }}>
-            <div style={{ fontSize: "56px", marginBottom: "24px", opacity: 0.3 }}>⬡</div>
-            <h1 style={{ fontSize: "24px", fontWeight: 600, marginBottom: "12px", color: "var(--ink)" }}>
-              Backend Offline
-            </h1>
-            <p style={{ fontSize: "15px", lineHeight: 1.6, color: "var(--subtle)", marginBottom: "32px" }}>
-              The AIOps backend is not reachable at <code style={{ background: "var(--cream)", padding: "2px 8px", borderRadius: "4px", fontSize: "13px" }}>localhost:8000</code>.
-              Start the pipeline data server to view 931 real AIOps incidents from the 2022 challenge dataset.
-            </p>
-            <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
-              <Link href="/mockdash" style={{
-                display: "inline-block", padding: "10px 24px", borderRadius: "8px",
-                background: "var(--ink)", color: "#fff", fontFamily: "var(--font-mono)",
-                fontSize: "13px", textDecoration: "none",
-              }}>
-                Mock Dashboard →
-              </Link>
-              <button onClick={() => window.location.reload()}
-                style={{
-                  display: "inline-block", padding: "10px 24px", borderRadius: "8px",
-                  border: "1px solid var(--hairline)", background: "transparent",
-                  color: "var(--ink)", fontFamily: "var(--font-mono)", fontSize: "13px", cursor: "pointer",
-                }}>
-                ↻ Retry
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  /* ---------- Main dashboard ---------- */
 
   return (
     <div className={styles.root}>
@@ -498,23 +498,39 @@ export default function DashboardPage() {
 
             <nav className={styles.nav}>
               <button
-                onClick={() => { setActiveTab("LIVE"); document.getElementById("kpi-section")?.scrollIntoView({ behavior: "smooth" }) }}
+                onClick={() => {
+                  setActiveTab("LIVE")
+                  document.getElementById("kpi-section")?.scrollIntoView({ behavior: "smooth" })
+                }}
                 className={`${styles.navLink} ${activeTab === "LIVE" ? styles.navLinkActive : ""}`}
                 style={{ background: "none", border: "none", font: "inherit", cursor: "pointer" }}
-              >LIVE VIEW</button>
+              >
+                LIVE VIEW
+              </button>
               <button
-                onClick={() => { setActiveTab("TOPOLOGY"); document.getElementById("topology-section")?.scrollIntoView({ behavior: "smooth" }) }}
+                onClick={() => {
+                  setActiveTab("TOPOLOGY")
+                  document.getElementById("topology-section")?.scrollIntoView({ behavior: "smooth" })
+                }}
                 className={`${styles.navLink} ${activeTab === "TOPOLOGY" ? styles.navLinkActive : ""}`}
                 style={{ background: "none", border: "none", font: "inherit", cursor: "pointer" }}
-              >TOPOLOGY MAP</button>
-              <Link href="/mockdash" className={styles.navLink}>Mock Data →</Link>
+              >
+                TOPOLOGY MAP
+              </button>
+              <Link href="/dashboard" className={styles.navLink}>
+                LIVE AIOps →
+              </Link>
             </nav>
           </div>
 
           <div className={styles.headerRight}>
-            <button onClick={togglePlay}
-              className={`${styles.playControlBtn} ${isPlaying ? styles.playControlBtnActive : ""}`}>
-              <span style={{ fontSize: "13px", lineHeight: 1 }}>{isPlaying ? "⏸" : "▶"}</span>
+            <button
+              onClick={togglePlay}
+              className={`${styles.playControlBtn} ${isPlaying ? styles.playControlBtnActive : ""}`}
+            >
+              <span style={{ fontSize: "13px", lineHeight: 1 }}>
+                {isPlaying ? "⏸" : "▶"}
+              </span>
               <span>{isPlaying ? "Pause Stream" : "Play Stream"}</span>
             </button>
 
@@ -522,14 +538,31 @@ export default function DashboardPage() {
               <span className={styles.replayLabel}>Speed</span>
               <div className={styles.replayGroup}>
                 {[1, 5, 10].map((s) => (
-                  <button key={s} onClick={() => handleSpeedChange(s)}
-                    className={`${styles.replayBtn} ${speed === s ? styles.replayBtnActive : ""}`}>{s}×</button>
+                  <button
+                    key={s}
+                    onClick={() => handleSpeedChange(s)}
+                    className={`${styles.replayBtn} ${speed === s ? styles.replayBtnActive : ""}`}
+                  >
+                    {s}×
+                  </button>
                 ))}
               </div>
             </div>
 
-            <span className={`${styles.dataBadge} ${styles.dataBadgeLive}`} title="AIOps 2022 dataset via FastAPI backend">
-              ● AIOps Live
+            <button
+              onClick={() => {
+                setStream(initialStream)
+                setIsPlaying(false)
+                setFocusIdx(0)
+              }}
+              className={styles.resetBtnTop}
+              title="Reset mock stream"
+            >
+              ↻ Reset
+            </button>
+
+            <span className={styles.dataBadge} title="Synthetic mock data for demo">
+              ● Mock Data
             </span>
           </div>
         </div>
@@ -539,21 +572,31 @@ export default function DashboardPage() {
       <section className={`${styles.kpiSection} ${styles.reveal}`} id="kpi-section">
         <div className={styles.headerRow}>
           <div>
-            <div className={styles.timeBadge}>Operations · AIOps 2022 · Multi-week</div>
+            <div className={styles.timeBadge}>
+              Operations · Friday · 14:20 UTC
+            </div>
             <h1 className={styles.heroTitle}>
               Signal, <em className={styles.heroItalic}>not</em> noise.
             </h1>
           </div>
           <div className={styles.regionGroup}>
             <div style={{ textAlign: "right" }}>
-              <div className={styles.regionLabel}>Pipeline</div>
-              <div className={styles.regionVal}>Service-aware clustering</div>
+              <div className={styles.regionLabel}>Region</div>
+              <div className={styles.regionVal}>US-EAST-1 · EU-WEST-1</div>
             </div>
             <div className={styles.headerDivider} />
-            <div>
-              <div className={styles.regionLabel}>Incidents</div>
-              <div className={styles.regionVal}>{incidents.length.toLocaleString()} clusters</div>
+            <div className={styles.uploadWrapper}>
+              <input type="file" id="logUpload" className={styles.uploadInput} accept=".log,.csv,.json,.txt" onChange={handleFileUpload} disabled={isUploading} />
+              <label htmlFor="logUpload" className={`${styles.uploadLabel} ${isUploading ? styles.uploadLoading : ""}`}>
+                {isUploading ? "Processing AI Embeddings..." : "↑ Upload Logs"}
+              </label>
             </div>
+            <button
+              onClick={() => setRunbookModalInc(activeFocusInc)}
+              className={styles.openRunbookBtn}
+            >
+              Open Runbook
+            </button>
           </div>
         </div>
 
@@ -561,19 +604,47 @@ export default function DashboardPage() {
           {kpiData.map((k, i) => {
             const featured = k.tone === "primary"
             return (
-              <div key={k.label} className={featured ? styles.kpiCardFeatured : styles.kpiCardWhite}
-                style={{ animationDelay: `${i * 60}ms` }}>
-                {featured && <div style={{ position: "absolute", inset: 0, opacity: 0.4, pointerEvents: "none",
-                  background: "radial-gradient(300px 120px at 100% 0%, rgba(255,255,255,0.35), transparent 60%)" }} />}
+              <div
+                key={k.label}
+                className={featured ? styles.kpiCardFeatured : styles.kpiCardWhite}
+                style={{ animationDelay: `${i * 60}ms` }}
+              >
+                {featured && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      opacity: 0.4,
+                      pointerEvents: "none",
+                      background: "radial-gradient(300px 120px at 100% 0%, rgba(255,255,255,0.35), transparent 60%)"
+                    }}
+                  />
+                )}
                 <div className={styles.kpiTopRow}>
-                  <div className={featured ? styles.kpiLabelFeatured : styles.kpiLabelWhite}>{k.label}</div>
-                  {k.delta && <div className={featured ? styles.kpiDeltaFeatured : styles.kpiDeltaWhite}>↑ {k.delta}</div>}
+                  <div className={featured ? styles.kpiLabelFeatured : styles.kpiLabelWhite}>
+                    {k.label}
+                  </div>
+                  {k.delta && (
+                    <div className={featured ? styles.kpiDeltaFeatured : styles.kpiDeltaWhite}>
+                      ↑ {k.delta}
+                    </div>
+                  )}
                 </div>
                 <div className={styles.kpiValueRow}>
-                  <span className={featured ? styles.kpiValueFeatured : styles.kpiValueWhite}>{k.value}</span>
-                  {k.suffix && <span className={featured ? styles.kpiSuffixFeatured : styles.kpiSuffixWhite}>{k.suffix}</span>}
+                  <span className={featured ? styles.kpiValueFeatured : styles.kpiValueWhite}>
+                    {k.value}
+                  </span>
+                  {k.suffix && (
+                    <span className={featured ? styles.kpiSuffixFeatured : styles.kpiSuffixWhite}>
+                      {k.suffix}
+                    </span>
+                  )}
                 </div>
-                {k.trend && <div className={styles.kpiSparkWrap}><Sparkline data={k.trend} tone={featured ? "primary" : "ink"} /></div>}
+                {k.trend && (
+                  <div className={styles.kpiSparkWrap}>
+                    <Sparkline data={k.trend} tone={featured ? "primary" : "ink"} />
+                  </div>
+                )}
               </div>
             )
           })}
@@ -582,6 +653,7 @@ export default function DashboardPage() {
 
       {/* Workspace */}
       <main className={styles.workspaceGrid}>
+        {/* Left column */}
         <div className={styles.leftColumn}>
           {/* Raw stream card */}
           <section className={`${styles.streamCard} ${styles.reveal}`}>
@@ -597,11 +669,13 @@ export default function DashboardPage() {
                     Raw signal <em className={styles.streamItalic}>stream</em>
                   </h2>
                 </div>
+
                 <div className={styles.streamStatsGroup}>
                   <div className={styles.streamHeaderSparkline}>
                     <Sparkline data={[42, 48, 52, 58, 64, 60, 68, 75, 72, 80, 85, 92, 98, 104]} tone="primary" />
                     <div className={styles.streamHeaderSparklineLabel}>EVENTS / S</div>
                   </div>
+
                   <div className={styles.streamStats}>
                     <div className={styles.statItem}>
                       <div className={styles.statLabel}>Throughput</div>
@@ -615,6 +689,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </div>
+
               <div className={styles.streamFilterBar}>
                 <div className={styles.streamFilterPills}>
                   <span className={`${styles.filterPill} ${styles.filterPillFatal}`}>● FATAL</span>
@@ -625,35 +700,35 @@ export default function DashboardPage() {
                 <div className={styles.streamBufferStatus}>
                   <span className={styles.bufferDot} />
                   <span className={styles.bufferStreaming}>STREAMING</span>
-                  <span className={styles.bufferDetails}> · buffer {alertBuffer.current.length} · win 60s</span>
+                  <span className={styles.bufferDetails}> · buffer 128 · win 60s</span>
                 </div>
               </div>
             </div>
 
             <div className={styles.streamList}>
-              {stream.length === 0 && (
-                <div style={{ padding: "20px", textAlign: "center", color: "var(--subtle)", fontFamily: "var(--font-mono)", fontSize: "12px" }}>
-                  Stream idle — press ▶ to replay AIOps alerts
-                </div>
-              )}
               {stream.map((r, i) => {
                 const idxHex = (i + 1).toString(16).toUpperCase().padStart(2, "0")
                 return (
-                  <div key={`${r.time}-${i}`} onClick={() => setFocusIdx(i)}
-                    className={`${styles.streamRow} ${r.focus ? styles.streamRowFocus : ""}`}>
+                  <div
+                    key={`${r.time}-${i}`}
+                    onClick={() => setFocusIdx(i)}
+                    className={`${styles.streamRow} ${r.focus ? styles.streamRowFocus : ""}`}
+                  >
                     <span className={styles.stIdx}>{idxHex}</span>
                     <span className={styles.stTime}>{r.time}</span>
                     <SeverityToken sev={r.sev} />
                     <span className={styles.stSrc}>[{r.src}]</span>
                     <span className={styles.stMsg}>{r.msg}</span>
-                    {r.focus && <span className={styles.stCorrelatedBadge}>● CORRELATED</span>}
+                    {r.focus && (
+                      <span className={styles.stCorrelatedBadge}>● CORRELATED</span>
+                    )}
                   </div>
                 )
               })}
             </div>
           </section>
 
-          {/* Topology + queue grid */}
+          {/* Topology + secondary incidents grid */}
           <div className={`${styles.bottomGrid} ${styles.reveal}`}>
             <section className={styles.topologyCard} id="topology-section">
               <div className={styles.topHeaderRow}>
@@ -674,9 +749,11 @@ export default function DashboardPage() {
                   <div className={styles.rackSev}>SEV · P1</div>
                 </div>
               </div>
+
               <div className={styles.topologyVizWrap}>
                 <TopologyMap nodes={topologyInfo.nodes} edges={topologyInfo.edges} />
               </div>
+
               <div className={styles.topologyLegendRow}>
                 <div className={styles.topologyLegendGroup}>
                   <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendDotRoot}`} /> root</span>
@@ -685,6 +762,7 @@ export default function DashboardPage() {
                 </div>
                 <span className={styles.legendEdgesText}>edges = replica flow</span>
               </div>
+
               <div className={styles.topologyMetricsGrid}>
                 <div className={styles.topologyMetricBox}>
                   <div className={styles.topologyMetricLabel}>NODES</div>
@@ -705,7 +783,9 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </div>
+
               <div className={styles.affectedPathDivider} />
+
               <div className={styles.affectedPathSection}>
                 <div className={styles.affectedPathHeader}>
                   <span className={styles.affectedPathTitle}>AFFECTED PATH</span>
@@ -736,17 +816,15 @@ export default function DashboardPage() {
                 <h3 className={styles.queueTitle}>Watching</h3>
               </div>
               <div className={styles.queueList}>
-                {queueIncidents.length === 0 && (
-                  <div style={{ padding: "16px", textAlign: "center", color: "var(--subtle)", fontFamily: "var(--font-mono)", fontSize: "11px" }}>
-                    No queued incidents
-                  </div>
-                )}
                 {queueIncidents.map((inc) => {
                   const isIncAcked = ackedIds.includes(inc.id)
                   return (
-                    <button key={inc.id} onClick={() => setFocusIdx(inc.rawIdx || 0)}
+                    <button
+                      key={inc.id}
+                      onClick={() => setFocusIdx(inc.rawIdx || 0)}
                       className={styles.queueBtn}
-                      style={isIncAcked ? { borderLeft: "3px solid #D97706", background: "var(--cream)" } : {}}>
+                      style={isIncAcked ? { borderLeft: "3px solid #D97706", background: "var(--cream)" } : {}}
+                    >
                       <div className={styles.queueBtnTop}>
                         <span className={styles.queueBtnId} style={isIncAcked ? { color: "#C2410C" } : {}}>
                           {isIncAcked ? `✓ ${inc.id} [ACK]` : inc.id}
@@ -775,38 +853,50 @@ export default function DashboardPage() {
         <aside className={`${styles.focusAside} ${styles.reveal}`}>
           <div className={styles.focusCardSticky}>
             <div className={styles.focusHeader}>
-              <div style={{ position: "absolute", top: "-64px", right: "-64px", width: "224px", height: "224px",
-                borderRadius: "50%", opacity: 0.3, pointerEvents: "none",
-                background: "radial-gradient(circle, #FFFFFF, transparent 70%)" }} />
+              <div
+                style={{
+                  position: "absolute",
+                  top: "-64px",
+                  right: "-64px",
+                  width: "224px",
+                  height: "224px",
+                  borderRadius: "50%",
+                  opacity: 0.3,
+                  pointerEvents: "none",
+                  background: "radial-gradient(circle, #FFFFFF, transparent 70%)"
+                }}
+              />
               <div className={styles.focusHeaderTop}>
                 <div className={styles.focusTagRow}>
                   <span className={styles.focusNum}>02</span>
                   <span className={styles.focusLine} />
                   <span className={styles.focusLabel}>Focus</span>
                 </div>
-                <span className={`${styles.focusStatusBadge} ${ackedIds.includes(activeFocusInc?.incident_id) ? styles.focusStatusAcked : ""}`}>
-                  {ackedIds.includes(activeFocusInc?.incident_id) ? "✓ Acknowledged" : `Active · ${focusIdx + 1} of ${incidents.length}`}
+                <span className={`${styles.focusStatusBadge} ${ackedIds.includes(activeFocusInc.incident_id) ? styles.focusStatusAcked : ""}`}>
+                  {ackedIds.includes(activeFocusInc.incident_id) ? "✓ Acknowledged · Silenced" : "Active · 03:42"}
                 </span>
               </div>
               <div className={styles.focusHeaderMain}>
                 <div style={{ minWidth: 0 }}>
-                  <span className={styles.focusId}>{activeFocusInc?.incident_id || "—"}</span>
-                  <h3 className={styles.focusTitle}>{activeFocusInc?.title || "Select an incident"}</h3>
+                  <span className={styles.focusId}>{activeFocusInc.incident_id || "INC-8821"}</span>
+                  <h3 className={styles.focusTitle}>
+                    {activeFocusInc.title || "HDFS DataNode connection refusal cluster"}
+                  </h3>
                 </div>
-                <ConfidenceRing value={activeFocusInc?.confidence_score || 0} />
+                <ConfidenceRing value={activeFocusInc.confidence_score || 94} />
               </div>
             </div>
 
             <div className={styles.focusBody}>
               <p className={styles.focusExplanation}>
-                {activeFocusInc?.summary || "Click an incident from the stream or queue to see details."}
+                {activeFocusInc.summary || "Cascading failure originating from node-042.rack-b after a primary NIC timeout. Correlation collapsed 412 alerts into a single root cause."}
               </p>
 
               <div className={styles.focusMetricsGrid}>
                 {[
-                  { l: "Suppressed", v: activeFocusInc?.suppressed_count ?? "—" },
-                  { l: "Detection",  v: activeFocusInc?.detection_time ?? "—" },
-                  { l: "MTTR est.",  v: activeFocusInc?.mttr_estimate ?? "—" },
+                  { l: "Suppressed", v: activeFocusInc.suppressed_count || "412" },
+                  { l: "Detection",  v: activeFocusInc.detection_time || "1.2s" },
+                  { l: "MTTR est.",  v: activeFocusInc.mttr_estimate || "8m" },
                 ].map((m) => (
                   <div key={m.l} className={styles.metricBox}>
                     <div className={styles.metricBoxLabel}>{m.l}</div>
@@ -815,49 +905,48 @@ export default function DashboardPage() {
                 ))}
               </div>
 
-              {(activeFocusInc?.timeline?.length > 0) && (
-                <div className={styles.timelineSection}>
-                  <div className={styles.timelineHeading}>Timeline</div>
-                  <div className={styles.timelineList}>
-                    {activeFocusInc.timeline.map((e, i) => (
-                      <div key={i} className={styles.timelineItem}>
-                        <div className={styles.timelineDotWrap}>
-                          <span className={`${styles.timelineDot} ${e.now ? styles.timelineDotNow : ""}`} />
-                          {i < activeFocusInc.timeline.length - 1 && <span className={styles.timelineConnector} />}
-                        </div>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div className={styles.timelineTime}>{e.t}</div>
-                          <div className={styles.timelineDesc}>{e.d}</div>
-                        </div>
+              <div className={styles.timelineSection}>
+                <div className={styles.timelineHeading}>Timeline</div>
+                <div className={styles.timelineList}>
+                  {activeFocusInc.timeline.map((e, i) => (
+                    <div key={i} className={styles.timelineItem}>
+                      <div className={styles.timelineDotWrap}>
+                        <span className={`${styles.timelineDot} ${e.now ? styles.timelineDotNow : ""}`} />
+                        {i < activeFocusInc.timeline.length - 1 && <span className={styles.timelineConnector} />}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {(activeFocusInc?.tags?.length > 0) && (
-                <div className={styles.chipsRow}>
-                  {activeFocusInc.tags.map((t) => (
-                    <span key={t} className={styles.chip}>{t}</span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div className={styles.timelineTime}>{e.t}</div>
+                        <div className={styles.timelineDesc}>{e.d}</div>
+                      </div>
+                    </div>
                   ))}
                 </div>
-              )}
+              </div>
+
+              <div className={styles.chipsRow}>
+                {(activeFocusInc.tags || ["NIC_TIMEOUT", "HDFS", "Rack-B", "P1"]).map((t) => (
+                  <span key={t} className={styles.chip}>{t}</span>
+                ))}
+              </div>
 
               <div className={styles.actionsGrid}>
-                <button onClick={() => {
-                  const id = activeFocusInc?.incident_id
-                  if (!id) return
-                  if (ackedIds.includes(id)) {
-                    setAckedIds(prev => prev.filter(x => x !== id))
-                  } else {
-                    setAckedIds(prev => [...new Set([...prev, id])])
-                  }
-                }} className={`${styles.actionBtnMain} ${activeFocusInc && ackedIds.includes(activeFocusInc.incident_id) ? styles.actionBtnAcked : ""}`}>
-                  {activeFocusInc && ackedIds.includes(activeFocusInc.incident_id) ? "✓ Acknowledged" : "Acknowledge"}
+                <button
+                  onClick={() => {
+                    const id = activeFocusInc.incident_id
+                    if (ackedIds.includes(id)) {
+                      setAckedIds(prev => prev.filter(x => x !== id))
+                    } else {
+                      setAckedIds(prev => [...new Set([...prev, id])])
+                    }
+                  }}
+                  className={`${styles.actionBtnMain} ${ackedIds.includes(activeFocusInc.incident_id) ? styles.actionBtnAcked : ""}`}
+                >
+                  {ackedIds.includes(activeFocusInc.incident_id) ? "✓ Acknowledged" : "Acknowledge"}
                 </button>
-                <button onClick={() => setRunbookModalInc(activeFocusInc)}
-                  disabled={!activeFocusInc}
-                  className={styles.actionBtnSecondary}>
+                <button
+                  onClick={() => setRunbookModalInc(activeFocusInc)}
+                  className={styles.actionBtnSecondary}
+                >
                   Runbook →
                 </button>
               </div>
@@ -866,6 +955,7 @@ export default function DashboardPage() {
         </aside>
       </main>
 
+      {/* Runbook Modal */}
       {runbookModalInc && (
         <div className={styles.runbookModalBackdrop} onClick={() => setRunbookModalInc(null)}>
           <div className={styles.runbookModalCard} onClick={(e) => e.stopPropagation()}>
@@ -876,15 +966,19 @@ export default function DashboardPage() {
                   <span className={styles.topLine} />
                   <span className={styles.topLabel}>Runbook Execution</span>
                 </div>
-                <h3 className={styles.runbookModalTitle}>Automated Remediation · {runbookModalInc.incident_id}</h3>
+                <h3 className={styles.runbookModalTitle}>
+                  Automated Remediation · {runbookModalInc.incident_id}
+                </h3>
               </div>
               <button className={styles.runbookCloseBtn} onClick={() => setRunbookModalInc(null)}>✕</button>
             </div>
+
             <div className={styles.runbookModalBody}>
               <div className={styles.runbookTargetBox}>
                 <span className={styles.runbookTargetLabel}>Target Anomaly:</span>
                 <span className={styles.runbookTargetVal}>{runbookModalInc.title}</span>
               </div>
+
               <div className={styles.runbookStepsList}>
                 <div className={styles.runbookStepItem}>
                   <span className={styles.runbookStepNum}>Step 1</span>
@@ -911,11 +1005,14 @@ export default function DashboardPage() {
                   <span className={styles.runbookStepStatus}>Ready</span>
                 </div>
               </div>
-              <button className={styles.runbookExecuteBtn}
+
+              <button
+                className={styles.runbookExecuteBtn}
                 onClick={() => {
                   setAckedIds(prev => [...new Set([...prev, runbookModalInc.incident_id])])
                   setRunbookModalInc(null)
-                }}>
+                }}
+              >
                 ⚡ Execute Remediation Pipeline & Resolve
               </button>
             </div>
@@ -930,12 +1027,27 @@ export default function DashboardPage() {
           <span>TERMINAL · 0x88F2A</span>
           <span className={styles.footerSub}>INGEST 4.2K EPS</span>
           <span className={styles.footerSub}>LATENCY 12MS</span>
-          <span className={styles.footerRegion}>AIOps 2022 · {incidents.length} incidents</span>
+          <span className={styles.footerRegion}>REGION · US-EAST-1 / EU-WEST-1</span>
         </div>
         <div className={styles.footerRight}>
-          <span onClick={() => { setStream([]); setIsPlaying(false); setFocusIdx(0); setAckedIds([]); setRunbookModalInc(null) }}
-            className={styles.footerActionPrimary}>[R] RESET</span>
-          <span onClick={() => setRunbookModalInc(null)} className={styles.footerAction}>[ESC] DISMISS</span>
+          <span
+            onClick={() => {
+              setStream(initialStream)
+              setIsPlaying(false)
+              setFocusIdx(0)
+              setAckedIds([])
+              setRunbookModalInc(null)
+            }}
+            className={styles.footerActionPrimary}
+          >
+            [R] RESET
+          </span>
+          <span
+            onClick={() => setRunbookModalInc(null)}
+            className={styles.footerAction}
+          >
+            [ESC] DISMISS
+          </span>
         </div>
       </footer>
     </div>
