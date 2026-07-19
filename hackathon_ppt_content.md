@@ -31,10 +31,21 @@
 
 **Title:** The Alert Storm Problem
 
-**3 stats (large font, centered):**
+**Sub-headline:** Problem Statement 10: Alert Correlation & Deduplication Engine
+
+**[PLACEHOLDER FOR NAPKIN AI TREE DIAGRAM]**
+*Visual: A cascading flow chart (tree with roots) showing a root cause failure triggering multiple downstream alerts.*
+* **Root Cause**: Database Connection Failure (Red)
+* **Branch 1**: App Server - HTTP 500 Errors
+* **Branch 2**: Load Balancer - High Latency Warning
+* **Branch 3**: API Gateway - Timeout Exceptions
+* **Result (Bottom)**: SLA Breach & Customer Support Tickets (Orange)
+
+**4 stats (large font, centered):**
 - 🔔 **1,000+** alerts/day in large enterprises
 - 🗑️ **70–99%** are downstream noise, not root causes
 - ⏱️ **45%** of incident response time wasted on triage
+- 💰 **$5,600/min** average cost of IT downtime
 
 **One line at the bottom:**
 > "Everything is broken — but what broke *first*?"
@@ -102,15 +113,16 @@ Raw Alerts → Clean & Embed → Correlate & Cluster → Root Cause Rank → Das
 
 **Title:** Why This Works
 
-**Simple table (3 columns, no borders, clean):**
+**6 uniform cells (3×2 grid):**
 
-| What | How | Why It's Feasible |
-|---|---|---|
-| Embeddings | sentence-transformers (local) | 5ms/alert, no API cost |
-| Clustering | Graph-based, time-windowed | Scales linearly, no training |
-| Root Cause | Temporal + topology ranking | Deterministic, explainable |
-| Explanations | LLM (1 call per cluster) | ~40 calls total, cost < $0.10 |
-| Evaluation | Loghub + AIOps labeled data | Real data, measurable accuracy |
+| # | Component | Tech | Detail |
+|---|---|---|---|
+| 01 | Embeddings | sentence-transformers (local) | 5ms/alert, zero API cost, runs on CPU |
+| 02 | Clustering | Graph-based, time-windowed | Scales linearly, no training required |
+| 03 | Root Cause | Temporal + topology ranking | Deterministic, explainable logic |
+| 04 | Explanations | LLM (1 call per cluster) | ~40 calls total, cost < $0.10 |
+| 05 | Evaluation | Loghub + AIOps labeled data | Real labeled data, measurable accuracy |
+| 06 | Architecture | FastAPI + Python | Open-source, runs on a laptop, no GPU |
 
 **Footer line:**
 > Zero model training. Runs on a laptop. Open-source stack.
@@ -141,33 +153,17 @@ Raw Alerts → Clean & Embed → Correlate & Cluster → Root Cause Rank → Das
 
 **Title:** Architecture
 
-**Visual: Clean layered diagram (design this graphically, not as text):**
+**Visual: 4-layer stacked diagram with tech labels per layer:**
 
-```
-┌──────────────────────────────────────────────┐
-│          DATA SOURCES                        │
-│   Loghub (HDFS, Spark)  │  AIOps Datasets   │
-└────────────────┬─────────────────────────────┘
-                 ▼
-┌──────────────────────────────────────────────┐
-│          PROCESSING PIPELINE                 │
-│  Parse → Clean → Embed → Correlate → Rank   │
-└────────────────┬─────────────────────────────┘
-                 ▼
-┌──────────────────────────────────────────────┐
-│          API LAYER (FastAPI)                 │
-│  /ingest  /run-pipeline  /incidents  /replay │
-└────────────────┬─────────────────────────────┘
-                 ▼
-┌──────────────────────────────────────────────┐
-│          FRONTEND DASHBOARD                  │
-│  Raw Stream │ Correlated View │ Metrics      │
-│         Replay Controls (▶ ⏸ ⏩)            │
-└──────────────────────────────────────────────┘
-```
+| Layer | Components | Tech |
+|---|---|---|
+| DATA SOURCES | Loghub (HDFS, Spark) · AIOps Datasets | CSV / JSON parsers |
+| PROCESSING PIPELINE | Parse → Clean → Embed → Correlate → Rank | sentence-transformers · NetworkX |
+| API LAYER | /ingest · /run-pipeline · /incidents · /replay | FastAPI · WebSocket |
+| FRONTEND | Raw Stream · Correlated View · Metrics · Replay | React · WebSocket |
 
-**Tech labels on the side (small, subtle):**
-`Python · sentence-transformers · NetworkX · FastAPI · WebSocket`
+**Tech footer (small, subtle):**
+`Python · sentence-transformers · NetworkX · FastAPI · WebSocket · React`
 
 ---
 

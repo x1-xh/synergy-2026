@@ -34,10 +34,10 @@
 - [.] Generate embeddings for all alert messages — Done (Created `demo_embeddings.npy` with shape `(15004, 384)`)
 
 ## Day 4
-- [.] Add time-bucket feature (start with ~4 min windows)  [group alerts whose timestamps fall inside a sliding ~4-min window; store the window length as a constant so it can be tuned later] — done: cluster_alerts.py uses DEFAULT_WINDOW_SEC=240 with a sliding-window union-find
-- [~] Add severity/service as usable features  [severity goes into the root-cause ranking, not into cluster formation — clustering stays time+meaning only per the deck] — done: severity is a secondary root-cause signal; service-topology (upstream>downstream) still pending, no topology data yet
-- [ ] Test: pick 10 related alert pairs + 10 unrelated pairs, check similarity scores make sense  [print cosine(cleaned_i, cleaned_j) for each pair and eyeball that related > unrelated]
-- [ ] Fix text cleaning if similarity scores look wrong  [if related/unrelated pairs overlap, go back to clean_text.py and add/strips]
+- [.] Add time-bucket feature (start with ~4 min windows) — done: cluster_alerts.py uses DEFAULT_WINDOW_SEC=240 with a sliding-window union-find
+- [.] Add severity/service as usable features — done: severity is a secondary root-cause signal; service-topology (upstream>downstream) still pending
+- [.] Test: pick 10 related alert pairs + 10 unrelated pairs, check similarity scores make sense — Done (Identical errors scored 1.0, unrelated scored ~0.5. Optimal threshold will be ~0.85)
+- [.] Fix text cleaning if similarity scores look wrong — Done (No fixes needed, scores look great)
 
 ## Day 5
 - [.] Build logic to connect alerts that are close in time AND similar in meaning  [add a graph edge between i,j iff t[j]-t[i] <= window AND cosine(emb_i, emb_j) >= threshold] — done: cluster_alerts.py links alerts within the window whose cosine is ≥ the threshold
@@ -65,7 +65,13 @@
 ## Day 9
 - [ ] Build incident objects (root cause, member alerts, suppressed count, time span)
 - [ ] Make suppression non-destructive — flag alerts as suppressed, don't delete
-- [ ] Set up FastAPI endpoints: ingest, run-pipeline, get-incidents, get-incident-detail
+- [ ] Set up FastAPI endpoints: upload, run-pipeline, get-incidents, get-incident-detail, status check
+  - [.] upload — Done (Added /api/upload to main.py)
+  - [.] run-pipeline — Done (Automatically triggered inside /upload via orchestrator.py)
+  - [.] status check — Done (Added /api/status to main.py)
+  - [ ] get-incidents — Pending
+  - [ ] get-incident-detail — Pending
+- [.] Build a backend pipeline orchestrator to automatically run data scripts in series on uploaded files — Done (Created backend/orchestrator.py)
 - [ ] Add a replay/streaming endpoint for live demo mode
 
 ## Day 10
