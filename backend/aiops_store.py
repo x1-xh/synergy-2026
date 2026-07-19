@@ -1,10 +1,10 @@
 """
 aiops_store.py — serves the pre-computed AIOps pipeline results to the API.
 
-data/run_aiops_pipeline.py writes data/aiops_incidents.json: a ~276MB JSON
-array with every member alert embedded. Too large to serve wholesale or parse
-per request, so on first access we derive three compact artifacts once and
-cache them on disk under data/aiops_api/:
+data/AIOps/run_aiops_pipeline.py writes data/AIOps/aiops_incidents.json: a
+~276MB JSON array with every member alert embedded. Too large to serve
+wholesale or parse per request, so on first access we derive three compact
+artifacts once and cache them on disk under data/AIOps/aiops_api/:
 
   incidents_light.json   — every incident WITHOUT member_alerts (list view)
   details/inc_NNN.json   — one file per incident, member_alerts capped
@@ -25,7 +25,7 @@ import os
 import re
 from datetime import datetime
 
-DATA_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'data'))
+DATA_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'data', 'AIOps'))
 INCIDENTS_JSON = os.path.join(DATA_DIR, 'aiops_incidents.json')
 EVALUATION_JSON = os.path.join(DATA_DIR, 'aiops_evaluation.json')
 API_DIR = os.path.join(DATA_DIR, 'aiops_api')
@@ -138,7 +138,7 @@ def ensure_built(force=False):
 
     if not os.path.exists(INCIDENTS_JSON):
         print(f"[aiops_store] {INCIDENTS_JSON} not found — "
-              f"run data/run_aiops_pipeline.py first. AIOps endpoints will 503.")
+              f"run data/AIOps/run_aiops_pipeline.py first. AIOps endpoints will 503.")
         return False
 
     built = os.path.exists(LIGHT_JSON) and os.path.isdir(DETAIL_DIR) \

@@ -503,9 +503,9 @@ def save_outputs(incidents, eval_metrics, eval_results, out_dir):
 # ---------------------------------------------------------------------------
 def main():
     p = argparse.ArgumentParser(description='Run full AIOps pipeline')
-    p.add_argument('--parsed', default='aiops_parsed.csv',
+    p.add_argument('--parsed', default='../aiops_parsed.csv',
                    help='Parsed AIOps CSV (output of parse_aiops.py)')
-    p.add_argument('--groundtruth', default='aiops_groundtruth.csv',
+    p.add_argument('--groundtruth', default='../aiops_groundtruth.csv',
                    help='Ground truth CSV (output of parse_aiops.py)')
     p.add_argument('--start', default=None,
                    help='Only keep alerts at/after this ISO date or timestamp '
@@ -535,6 +535,7 @@ def main():
     args = p.parse_args()
 
     os.chdir(SCRIPT_DIR)
+sys.path.insert(0, os.path.dirname(SCRIPT_DIR))  # parent dir (data/) for module imports
 
     print("\n" + "█" * 60)
     print("  AIOps FULL PIPELINE")
