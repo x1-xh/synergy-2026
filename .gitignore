@@ -24,6 +24,10 @@ data/*.tar.gz
 data/HDFS/
 data/Spark/
 data/tmp/
+data/aiops_api/
+data/aiops_*.json
+data/aiops_*.md
+ds/
 incidents.json
 !data/*.py
 
