@@ -254,18 +254,33 @@ def build_incident(inc_n, members, alerts, emb_norm):
     root_alert = alerts[root_idx]
 
     member_alerts = [alerts[i] for i in members]
+
+    # Build the timeline array for the frontend UI
+    timeline = []
+    # Sort members by timestamp descending for the timeline
+    sorted_members = sorted(member_alerts, key=lambda a: a['timestamp'], reverse=True)
+    # Take up to 5 alerts for the timeline to prevent UI overflow
+    for a in sorted_members[:5]:
+        msg_trunc = (a.get('message', '')[:60] + '…') if len(a.get('message', '')) > 60 else a.get('message', '')
+        timeline.append({
+            't': a['timestamp'][11:19],
+            'd': f"{a['severity']} · {msg_trunc}",
+            'now': a == root_alert
+        })
+
     incident = {
         'incident_id': f'inc_{inc_n:03d}',
         'title': make_title(root_alert),
         'root_cause_alert': root_alert,
         'confidence': confidence,
-        'explanation': '',  # LLM pass (Day 8) fills this, one call per cluster
+        'explanation': 'Anomalous cluster detected autonomously by ClarityOps vector similarity engine.',  # LLM pass (Day 8) fills this, one call per cluster
         'time_span': {
             'start': min(a['timestamp'] for a in member_alerts),
             'end': max(a['timestamp'] for a in member_alerts),
         },
         'suppressed_count': max(0, len(members) - 1),
         'member_alerts': member_alerts,
+        'timeline': timeline,
         'status': 'confirmed' if (confidence >= CONF_FLOOR and len(members) >= MIN_CLUSTER_SIZE)
                   else 'needs_review',
         'root_cause_candidates': candidates,
