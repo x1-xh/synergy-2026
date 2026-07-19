@@ -5,6 +5,8 @@ requires-python = ">=3.9"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
+    "numpy>=1.26.0",
+    "sentence-transformers>=2.2.2",
 ]
 
 [dependency-groups]
