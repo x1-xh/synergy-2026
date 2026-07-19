@@ -1,5 +1,53 @@
+# Node / Frontend
 node_modules/
 .next/
-*.pyc
+dist/
+build/
+.npm
+
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
 .venv/
+env/
+venv/
+.env
+
+# Data files (DO NOT COMMIT RAW/PROCESSED DATA TO GITHUB)
+data/*.log
+data/*.csv
+data/*.npy
+data/*.npz
+data/*.zip
+data/*.tar.gz
+data/HDFS/
+data/Spark/
+data/tmp/
+incidents.json
+!data/*.py
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*~
+*.tmp
+
+# Presentations & Slides
+*.pptx
+ppt/
+generate_pptx.py
+
+# Images & Photos
+*.png
+*.jpg
+*.jpeg
+*.svg
