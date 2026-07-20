@@ -45,12 +45,13 @@ Thumbs.db
 # Temporary files
 *~
 *.tmp
+test_llm.py
 
 # Presentations & Slides
 *.pptx
 ppt/
 generate_pptx.py
-
+prep.md
 # Images & Photos
 *.png
 *.jpg

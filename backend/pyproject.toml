@@ -8,6 +8,8 @@ dependencies = [
     "numpy>=1.26.0",
     "sentence-transformers>=2.2.2",
     "python-multipart>=0.0.9",
+    "openai>=2.46.0",
+    "python-dotenv>=1.2.1",
 ]
 
 [dependency-groups]
