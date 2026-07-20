@@ -24,12 +24,13 @@ data/*.tar.gz
 data/HDFS/
 data/Spark/
 data/tmp/
-data/aiops_api/
-data/aiops_*.json
-data/aiops_*.md
-ds/
+data/ds/
+data/AIOps/aiops_api/
+data/AIOps/aiops_*.json
+data/AIOps/aiops_*.md
 incidents.json
 !data/*.py
+!data/AIOps/*.py
 
 # OS generated files
 .DS_Store

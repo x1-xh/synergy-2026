@@ -548,9 +548,9 @@ if __name__ == '__main__':
     p.add_argument('--ds-root', default=DS_ROOT,
                    help='Path to the ds/ folder (default: ../ds relative to this script)')
     p.add_argument('--out', default=None,
-                   help='Output CSV path (default: aiops_parsed.csv in data/)')
+                   help='Output CSV path (default: ../aiops_parsed.csv in data/)')
     p.add_argument('--out-gt', default=None,
-                   help='Output ground truth CSV (default: aiops_groundtruth.csv in data/)')
+                   help='Output ground truth CSV (default: ../aiops_groundtruth.csv in data/)')
     p.add_argument('--skip-envoy', action='store_true',
                    help='Skip envoy gateway logs (saves time, they are ~3GB each)')
     p.add_argument('--skip-traces', action='store_true',
@@ -559,8 +559,8 @@ if __name__ == '__main__':
 
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-    out_csv = args.out or 'aiops_parsed.csv'
-    out_gt = args.out_gt or 'aiops_groundtruth.csv'
+    out_csv = args.out or '../aiops_parsed.csv'
+    out_gt = args.out_gt or '../aiops_groundtruth.csv'
 
     parse_all(args.ds_root, out_csv, out_gt,
               skip_envoy=args.skip_envoy, skip_traces=args.skip_traces)

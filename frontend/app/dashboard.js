@@ -243,6 +243,7 @@ export default function DashboardPage() {
   const [runbookModalInc, setRunbookModalInc] = useState(null)
   const [isOffline, setIsOffline] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
+  const [isUploading, setIsUploading] = useState(false)
   const timerRef = useRef(null)
 
   // Replay buffer fed from /api/stream
@@ -334,6 +335,41 @@ export default function DashboardPage() {
       .catch(() => {})
     return () => { cancelled = true }
   }, [focusId])
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("http://localhost:8000/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (data.status === "success" && data.incidents) {
+        setIncidents(data.incidents);
+        setFocusIdx(0);
+        setKpiData((prev) => {
+          const newKpis = [...prev];
+          const reduction = (100 - (data.clusters_count / data.total_alerts * 100)).toFixed(1);
+          if (newKpis[0]) newKpis[0] = { ...newKpis[0], value: reduction };
+          if (newKpis[1]) newKpis[1] = { ...newKpis[1], value: data.total_alerts.toLocaleString() };
+          if (newKpis[2]) newKpis[2] = { ...newKpis[2], value: data.clusters_count < 10 ? `0${data.clusters_count}` : String(data.clusters_count) };
+          return newKpis;
+        });
+      }
+    } catch (err) {
+      console.error("Upload failed", err);
+    } finally {
+      setIsUploading(false);
+      e.target.value = null;
+    }
+  };
 
   // Replay timer
   const stopReplay = useCallback(() => {
@@ -507,7 +543,6 @@ export default function DashboardPage() {
                 className={`${styles.navLink} ${activeTab === "TOPOLOGY" ? styles.navLinkActive : ""}`}
                 style={{ background: "none", border: "none", font: "inherit", cursor: "pointer" }}
               >TOPOLOGY MAP</button>
-              <Link href="/mockdash" className={styles.navLink}>Mock Data →</Link>
             </nav>
           </div>
 
@@ -526,6 +561,13 @@ export default function DashboardPage() {
                     className={`${styles.replayBtn} ${speed === s ? styles.replayBtnActive : ""}`}>{s}×</button>
                 ))}
               </div>
+            </div>
+
+            <div className={styles.uploadWrapper}>
+              <input type="file" id="logUpload" className={styles.uploadInput} accept=".log,.csv,.json,.txt" onChange={handleFileUpload} disabled={isUploading} />
+              <label htmlFor="logUpload" className={`${styles.uploadLabel} ${isUploading ? styles.uploadLoading : ""}`}>
+                {isUploading ? "Processing..." : "↑ Upload Logs"}
+              </label>
             </div>
 
             <span className={`${styles.dataBadge} ${styles.dataBadgeLive}`} title="AIOps 2022 dataset via FastAPI backend">
