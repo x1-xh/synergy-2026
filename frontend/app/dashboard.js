@@ -71,147 +71,6 @@ function ConfidenceRing({ value = 0, size = 64 }) {
   )
 }
 
-function getTopologyInfo(activeFocusInc, latestStreamSrc) {
-  const title = (activeFocusInc?.title || "").toLowerCase()
-  const tags = (activeFocusInc?.tags || []).map(t => typeof t === "string" ? t.toLowerCase() : "")
-  const isSpark = title.includes("spark") || tags.includes("spark") || tags.includes("oom")
-  const isZk = title.includes("zookeeper") || title.includes("quorum") || tags.includes("zookeeper")
-  const isDisk = title.includes("disk") || title.includes("vol") || tags.includes("disk_io")
-  const isNameNode = title.includes("namenode") || title.includes("metadata")
-
-  let rack = "Rack-B"
-  let affectedText = "6 nodes affected"
-  let highlightText = "1 root · 2 downstream"
-
-  let nodes = [
-    { id: "nn", x: 50, y: 30, label: "NameNode", ring: true, alert: isNameNode, warn: isSpark },
-    { id: "dn1", x: 15, y: 70, label: "node-042", alert: !isSpark && !isZk && !isNameNode && !isDisk, warn: isDisk },
-    { id: "dn2", x: 35, y: 90, label: "node-043", alert: isSpark },
-    { id: "dn3", x: 62, y: 92, label: "node-091", alert: isDisk, warn: !isDisk && !isSpark },
-    { id: "zk", x: 82, y: 65, label: "zk-quorum", alert: isZk || (!isSpark && !isDisk && !isNameNode), warn: isNameNode },
-    { id: "sd", x: 88, y: 22, label: "spark-drv", alert: isSpark },
-  ]
-
-  let edges = [
-    ["nn", "dn1", !isSpark && !isZk && !isDisk],
-    ["nn", "dn2", isSpark],
-    ["nn", "dn3", isDisk],
-    ["nn", "zk", isZk || (!isSpark && !isDisk)],
-    ["nn", "sd", isSpark],
-    ["dn1", "zk", !isSpark && !isZk && !isDisk],
-    ["sd", "dn2", isSpark],
-    ["zk", "dn3", isZk]
-  ]
-
-  let metrics = {
-    nodes: { count: "6", total: "128" },
-    replicas: { count: "17", status: "unsafe" },
-    jobs: { count: "3", status: "stalled" }
-  }
-  let affectedPath = [
-    { node: "node-042", role: "ROOT", impact: "—", tone: "root" },
-    { node: "zk-quorum", role: "DOWNSTREAM", impact: "+340ms", tone: "root" },
-    { node: "node-091", role: "DOWNSTREAM", impact: "+120ms", tone: "degraded" }
-  ]
-
-  if (isSpark) {
-    rack = "Rack-A"
-    affectedText = "5 nodes affected"
-    highlightText = "1 root · 3 downstream"
-    metrics = { nodes: { count: "5", total: "128" }, replicas: { count: "12", status: "unsafe" }, jobs: { count: "8", status: "stalled" } }
-    affectedPath = [
-      { node: "spark-drv-07", role: "ROOT", impact: "—", tone: "root" },
-      { node: "node-043", role: "DOWNSTREAM", impact: "+410ms", tone: "root" },
-      { node: "node-042", role: "DOWNSTREAM", impact: "+180ms", tone: "degraded" }
-    ]
-  } else if (isZk) {
-    rack = "Rack-C"
-    affectedText = "6 nodes affected"
-    highlightText = "2 root · 2 downstream"
-    metrics = { nodes: { count: "6", total: "128" }, replicas: { count: "24", status: "unsafe" }, jobs: { count: "2", status: "stalled" } }
-    affectedPath = [
-      { node: "zk-quorum-02", role: "ROOT", impact: "—", tone: "root" },
-      { node: "node-091", role: "DOWNSTREAM", impact: "+520ms", tone: "root" },
-      { node: "spark-drv", role: "DOWNSTREAM", impact: "+210ms", tone: "degraded" }
-    ]
-  } else if (isDisk) {
-    rack = "Rack-D"
-    affectedText = "4 nodes affected"
-    highlightText = "1 root · 1 downstream"
-    metrics = { nodes: { count: "4", total: "128" }, replicas: { count: "8", status: "unsafe" }, jobs: { count: "1", status: "stalled" } }
-    affectedPath = [
-      { node: "node-091", role: "ROOT", impact: "—", tone: "root" },
-      { node: "zk-quorum", role: "DOWNSTREAM", impact: "+290ms", tone: "degraded" }
-    ]
-  } else if (isNameNode) {
-    rack = "Rack-NN"
-    affectedText = "6 nodes affected"
-    highlightText = "1 root · 4 downstream"
-    metrics = { nodes: { count: "6", total: "128" }, replicas: { count: "32", status: "unsafe" }, jobs: { count: "5", status: "stalled" } }
-    affectedPath = [
-      { node: "nn-primary", role: "ROOT", impact: "—", tone: "root" },
-      { node: "node-042", role: "DOWNSTREAM", impact: "+480ms", tone: "root" },
-      { node: "node-043", role: "DOWNSTREAM", impact: "+220ms", tone: "degraded" }
-    ]
-  }
-
-  if (latestStreamSrc) {
-    const srcLower = latestStreamSrc.toLowerCase()
-    nodes = nodes.map(n => {
-      if ((srcLower.includes("spark") && n.id === "sd") ||
-          (srcLower.includes("zookeeper") && n.id === "zk") ||
-          (srcLower.includes("namenode") && n.id === "nn") ||
-          (srcLower.includes("datanode") && (n.id === "dn1" || n.id === "dn2" || n.id === "dn3"))) {
-        return { ...n, alert: true }
-      }
-      return n
-    })
-  }
-
-  return { rack, affectedText, highlightText, nodes, edges, metrics, affectedPath }
-}
-
-function TopologyMap({ nodes = [], edges = [] }) {
-  const pos = (id) => nodes.find((n) => n.id === id) || { x: 50, y: 50 }
-  return (
-    <svg viewBox="0 0 100 110" style={{ width: "100%", height: "100%" }} preserveAspectRatio="xMidYMid meet">
-      <defs>
-        <radialGradient id="halo" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="oklch(0.68 0.19 45)" stopOpacity="0.45" />
-          <stop offset="100%" stopColor="oklch(0.68 0.19 45)" stopOpacity="0" />
-        </radialGradient>
-      </defs>
-      {edges.map(([a, b, hot], i) => {
-        const p1 = pos(a)
-        const p2 = pos(b)
-        return (
-          <line key={i} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-            stroke={hot ? "oklch(0.68 0.19 45)" : "oklch(0.55 0.14 45 / 0.35)"}
-            strokeWidth={hot ? 0.9 : 0.45} strokeDasharray={hot ? "1.5 1" : "0"}
-            className={hot ? "co-draw" : ""} />
-        )
-      })}
-      {nodes.map((n) => {
-        const isTopNode = n.id === "nn" || n.id === "sd"
-        const labelY = isTopNode ? n.y - 6.2 : n.y + 8.5
-        return (
-          <g key={n.id}>
-            {n.alert && <circle cx={n.x} cy={n.y} r="8.5" fill="url(#halo)" />}
-            <circle cx={n.x} cy={n.y} r={n.ring ? 3.6 : 2.8}
-              fill={n.alert ? "oklch(0.68 0.19 45)" : n.warn ? "oklch(0.88 0.09 58)" : "oklch(0.22 0.035 40)"}
-              stroke="oklch(0.975 0.022 65)" strokeWidth="0.8" />
-            <text x={n.x} y={labelY} fontSize="4.8" fontWeight="700" textAnchor="middle" fill="#FFFFFF"
-              stroke="oklch(0.16 0.03 40)" strokeWidth="1.5" paintOrder="stroke fill"
-              style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.03em" }}>
-              {n.label}
-            </text>
-          </g>
-        )
-      })}
-    </svg>
-  )
-}
-
 /* ---------- Helpers for API data normalization ---------- */
 
 function alertToRow(a) {
@@ -428,8 +287,6 @@ export default function DashboardPage() {
     timeline: rawFocus.timeline || [],
   } : null
 
-  const topologyInfo = getTopologyInfo(activeFocusInc || {}, isPlaying ? stream[0]?.src : null)
-
   const queueIncidents = incidents.length > 1
     ? incidents.slice(1).map((inc, idx) => ({
         id: inc.incident_id || `inc_${idx + 1}`,
@@ -538,11 +395,6 @@ export default function DashboardPage() {
                 className={`${styles.navLink} ${activeTab === "LIVE" ? styles.navLinkActive : ""}`}
                 style={{ background: "none", border: "none", font: "inherit", cursor: "pointer" }}
               >LIVE VIEW</button>
-              <button
-                onClick={() => { setActiveTab("TOPOLOGY"); document.getElementById("topology-section")?.scrollIntoView({ behavior: "smooth" }) }}
-                className={`${styles.navLink} ${activeTab === "TOPOLOGY" ? styles.navLinkActive : ""}`}
-                style={{ background: "none", border: "none", font: "inherit", cursor: "pointer" }}
-              >TOPOLOGY MAP</button>
             </nav>
           </div>
 
@@ -695,78 +547,8 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          {/* Topology + queue grid */}
+          {/* Queue */}
           <div className={`${styles.bottomGrid} ${styles.reveal}`}>
-            <section className={styles.topologyCard} id="topology-section">
-              <div className={styles.topHeaderRow}>
-                <div>
-                  <div className={styles.topTagRow}>
-                    <span className={styles.topNum}>03</span>
-                    <span className={styles.topLine} />
-                    <span className={styles.topLabel}>Topology</span>
-                  </div>
-                  <h3 className={styles.topTitle}>Blast radius</h3>
-                  <div className={styles.topSubtitle}>containment · t+04:12</div>
-                </div>
-                <div className={styles.topHeaderRight}>
-                  <div className={styles.rackBadge}>
-                    <span className={styles.rackDot} />
-                    <span className={styles.rackText}>{topologyInfo.rack} · LIVE</span>
-                  </div>
-                  <div className={styles.rackSev}>SEV · P1</div>
-                </div>
-              </div>
-              <div className={styles.topologyVizWrap}>
-                <TopologyMap nodes={topologyInfo.nodes} edges={topologyInfo.edges} />
-              </div>
-              <div className={styles.topologyLegendRow}>
-                <div className={styles.topologyLegendGroup}>
-                  <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendDotRoot}`} /> root</span>
-                  <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendDotDegraded}`} /> degraded</span>
-                  <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendDotHealthy}`} /> healthy</span>
-                </div>
-                <span className={styles.legendEdgesText}>edges = replica flow</span>
-              </div>
-              <div className={styles.topologyMetricsGrid}>
-                <div className={styles.topologyMetricBox}>
-                  <div className={styles.topologyMetricLabel}>NODES</div>
-                  <div className={styles.topologyMetricVal}>
-                    {topologyInfo.metrics.nodes.count} <span className={styles.topologyMetricSub} style={{ color: "#F59E0B" }}>of {topologyInfo.metrics.nodes.total}</span>
-                  </div>
-                </div>
-                <div className={styles.topologyMetricBox}>
-                  <div className={styles.topologyMetricLabel}>REPLICAS</div>
-                  <div className={styles.topologyMetricVal}>
-                    {topologyInfo.metrics.replicas.count} <span className={styles.topologyMetricSub} style={{ color: "#FF6B1A" }}>{topologyInfo.metrics.replicas.status}</span>
-                  </div>
-                </div>
-                <div className={styles.topologyMetricBox}>
-                  <div className={styles.topologyMetricLabel}>JOBS</div>
-                  <div className={styles.topologyMetricVal}>
-                    {topologyInfo.metrics.jobs.count} <span className={styles.topologyMetricSub} style={{ color: "#FF6B1A" }}>{topologyInfo.metrics.jobs.status}</span>
-                  </div>
-                </div>
-              </div>
-              <div className={styles.affectedPathDivider} />
-              <div className={styles.affectedPathSection}>
-                <div className={styles.affectedPathHeader}>
-                  <span className={styles.affectedPathTitle}>AFFECTED PATH</span>
-                  <span className={styles.affectedPathHighlight}>{topologyInfo.highlightText}</span>
-                </div>
-                <div className={styles.affectedPathList}>
-                  {topologyInfo.affectedPath.map((p, idx) => (
-                    <div key={idx} className={styles.affectedPathRow}>
-                      <div className={styles.affectedPathLeft}>
-                        <span className={`${styles.affectedPathDot} ${p.tone === "root" ? styles.affectedPathDotRoot : styles.affectedPathDotDegraded}`} />
-                        <span className={styles.affectedPathNode}>{p.node}</span>
-                        <span className={styles.affectedPathRole}>{p.role}</span>
-                      </div>
-                      <span className={styles.affectedPathImpact}>{p.impact}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </section>
 
             <section className={styles.queueCard}>
               <div style={{ marginBottom: "16px" }}>
