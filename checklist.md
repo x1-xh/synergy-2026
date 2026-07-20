@@ -57,26 +57,26 @@
 - [.] Flag low-confidence groups as "needs review"  [set status to needs_review when confidence < floor or cluster too small] — done: status field set by CONF_FLOOR and MIN_CLUSTER_SIZE
 
 ## Day 8
-- [ ] Write the LLM prompt — one call per group, not per alert
-- [ ] Keep prompt limited to only alerts inside that group
-- [ ] Test explanation output on a few sample groups, check for made-up details
-- [ ] Continue building frontend incident detail view (timeline + explanation)
+- [.] Write the LLM prompt — one call per group, not per alert — Done
+- [.] Keep prompt limited to only alerts inside that group — Done (using top 3 candidates)
+- [.] Test explanation output on a few sample groups, check for made-up details — Done (Tested via NIM)
+- [.] Continue building frontend incident detail view (timeline + explanation) — Done (Wired up to backend)
 
 ## Day 9
-- [ ] Build incident objects (root cause, member alerts, suppressed count, time span)
-- [ ] Make suppression non-destructive — flag alerts as suppressed, don't delete
-- [ ] Set up FastAPI endpoints: upload, run-pipeline, get-incidents, get-incident-detail, status check
+- [.] Build incident objects (root cause, member alerts, suppressed count, time span) — Done (Integrated in AIOps pipeline)
+- [.] Make suppression non-destructive — flag alerts as suppressed, don't delete — Done
+- [.] Set up FastAPI endpoints: upload, run-pipeline, get-incidents, get-incident-detail, status check
   - [.] upload — Done (Added /api/upload to main.py)
   - [.] run-pipeline — Done (Automatically triggered inside /upload via orchestrator.py)
   - [.] status check — Done (Added /api/status to main.py)
-  - [ ] get-incidents — Pending
-  - [ ] get-incident-detail — Pending
+  - [.] get-incidents — Done (Implemented in aiops_store.py)
+  - [.] get-incident-detail — Done (Implemented in aiops_store.py)
 - [.] Build a backend pipeline orchestrator to automatically run data scripts in series on uploaded files — Done (Created backend/orchestrator.py)
-- [ ] Add a replay/streaming endpoint for live demo mode
+- [.] Add a replay/streaming endpoint for live demo mode — Done (/api/stream added)
 
 ## Day 10
-- [ ] Connect frontend to real backend, remove fake data
-- [ ] Build play/pause/speed replay controls on frontend
+- [.] Connect frontend to real backend, remove fake data — Done (lib/api.js + dashboard.js refactored)
+- [.] Build play/pause/speed replay controls on frontend — Done
 - [ ] Start running parameter sweep: different time windows + similarity thresholds
 
 ## Day 11

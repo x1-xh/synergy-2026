@@ -55,8 +55,19 @@ def run_full_pipeline(uploaded_csv_path: str, output_dir: str):
     
     # Step 4: Assemble Incident JSON objects
     incidents = []
+    try:
+        from llm_explainer import generate_incident_explanation
+    except ImportError:
+        generate_incident_explanation = None
+
     for n, (_, members) in enumerate(clusters.items(), start=1):
         inc, root_idx = build_incident(n, members, alerts, emb_norm)
+        
+        if generate_incident_explanation:
+            new_exp = generate_incident_explanation(inc)
+            if new_exp and 'autonomously' not in new_exp:
+                inc['explanation'] = new_exp
+                
         # Strip internal key
         inc.pop('_root_idx', None)
         incidents.append(inc)
