@@ -227,7 +227,23 @@ def get_incident(incident_id):
     if not os.path.exists(path):
         return None
     with open(path, encoding='utf-8') as f:
-        return json.load(f)
+        inc = json.load(f)
+        
+    current_exp = inc.get('explanation', '')
+    if not current_exp or 'autonomously' in current_exp:
+        import sys
+        sys.path.append(os.path.join(os.path.dirname(__file__), '../data'))
+        try:
+            from llm_explainer import generate_incident_explanation
+            new_exp = generate_incident_explanation(inc)
+            if new_exp and 'autonomously' not in new_exp:
+                inc['explanation'] = new_exp
+                with open(path, 'w', encoding='utf-8') as fw:
+                    json.dump(inc, fw, indent=2)
+        except ImportError:
+            pass
+
+    return inc
 
 
 def get_stream_batch(cursor=0, limit=50):

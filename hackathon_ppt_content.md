@@ -183,7 +183,40 @@ Raw Alerts → Clean & Embed → Correlate & Cluster → Root Cause Rank → Das
 
 ---
 
-## Slide 6: Market Research
+## Slide 6: Initial Progress
+
+### 🖥️ On the Slide
+
+**Title:** Initial Progress
+
+**Two-column layout:**
+
+| ✅ Completed | 🔜 Coming Next |
+|---|---|
+| **Log Parsing Pipeline** — Unified parser for HDFS & Spark raw logs (1.77M alerts normalized) | **LLM Integration** — One-call-per-cluster plain-English root cause explanations |
+| **Text Cleaning & Embedding** — Stripped noise from messages, generated 384-dim vectors via all-MiniLM-L6-v2 | **Live Replay Streaming** — WebSocket-powered real-time alert stream with play/pause controls |
+| **Time-Windowed Similarity Clustering** — 4-min sliding window + cosine similarity graph → incident groups | **Parameter Tuning Dashboard** — Sweep across time windows & similarity thresholds, chart accuracy vs. noise reduction |
+| **Root Cause Ranking** — Earliest-alert + severity scoring, top-3 candidates with confidence | **Full Error Report** — Detailed per-incident breakdown with alert timeline, severity distribution, and cluster metrics |
+| **File Upload & Pipeline Trigger** — Judge can upload raw logs via the UI, full pipeline runs automatically | **Exportable Reports** — One-click PDF/CSV download of incident summaries for post-mortems and compliance |
+| **FastAPI Backend** — `/api/upload`, `/api/status` endpoints with error handling | **GitHub Workflow Integration** — API hooks to trigger the pipeline directly from CI/CD pipelines and GitHub Actions |
+
+
+
+---
+
+### 🎤 Speaking Script
+
+> "Here's where we stand right now."
+>
+> "On the left — what's already working. We built the full data pipeline end-to-end: raw log ingestion, text cleaning, embedding generation, time-windowed similarity clustering, and root cause ranking. The input feature is live — a judge can upload any raw log file through the dashboard and watch the pipeline process it in real time."
+>
+> "On the right — what's coming next. The big one is LLM integration: feeding each incident cluster to a language model to generate plain-English explanations of what went wrong. We're also building live replay streaming, a parameter tuning dashboard, and accuracy evaluation against labeled AIOps datasets."
+>
+> "The core intelligence is done. What remains is polish, explainability, and evaluation."
+
+---
+
+## Slide 7: Market Research
 
 ### 🖥️ On the Slide
 
@@ -217,7 +250,7 @@ Raw Alerts → Clean & Embed → Correlate & Cluster → Root Cause Rank → Das
 
 ---
 
-## Slide 7: Closing & Datasets
+## Slide 8: Closing & Datasets
 
 ### 🖥️ On the Slide
 
